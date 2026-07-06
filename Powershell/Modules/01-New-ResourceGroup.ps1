@@ -15,18 +15,11 @@ Learning Objectives
 ================================================================================
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
-param(
-    [Parameter(Mandatory)]
-    [ValidateNotNullOrEmpty()]
-    [string]$ResourceGroupName,
-
-    [Parameter(Mandatory)]
-    [ValidateNotNullOrEmpty()]
-    [string]$Location
-)
+param()
 # Import common modules
 
-. "$PSScriptRoot\..\Common\GlobalVariables.ps1"
+. "$PSScriptRoot\..\Common\01-GlobalVariables.ps1"
+#. "$PSScriptRoot\..\Common\02-NetworkVariables.ps1"
 . "$PSScriptRoot\..\Common\AzureHelpers.ps1"
 
 # Validate prerequisites
