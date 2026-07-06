@@ -28,6 +28,9 @@ if (-not (Test-LabPrerequisites)) {
     Write-LabLog "Prerequisite validation failed. Deployment aborted." -Level ERROR
     throw "Prerequisite validation failed."
 }
+
+# Verify Resource Group Exists
+
 Write-LabLog "Checking if Resource Group '$ResourceGroupName' exists..."
 
 $resourceGroup = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction SilentlyContinue
