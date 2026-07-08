@@ -103,6 +103,20 @@ function Test-Subscription {
 Test-LabPrerequisites
 ================================================================================
 #>
+function Validate-AzContext {
+    [CmdletBinding()]
+    param()
+
+    $context = Get-AzContext
+
+    if (-not $context) {
+        throw "No active Azure context found. Please run Connect-AzAccount."
+    }
+
+    Write-LabLog "Azure context validated: $($context.Account.Id)" -Level Info
+
+    return $context
+}
 
 function Test-LabPrerequisites {
 
