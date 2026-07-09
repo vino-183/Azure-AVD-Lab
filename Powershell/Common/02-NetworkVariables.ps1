@@ -24,3 +24,10 @@ $SubnetAddressSpaces = @{
 }
 
 #endregion
+
+# Network Interface Variables
+$NetworkInterfaceName = "nic-avdlab-eastus-001"
+$EnabledAcceleratedNetworking = $false
+$EnableIPForwarding = $false
+$PrivateIPAllocationMethod = "Dynamic" # Options: "Dynamic", "Static"
+#$CreatePublicIP = $false

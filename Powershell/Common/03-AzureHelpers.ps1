@@ -298,3 +298,36 @@ function Test-DiskIfExists {
 
     Get-AzDisk -Name $DiskName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 }
+
+#---------------------------------------
+# Test-NSGIfExists
+#---------------------------------------
+function Test-NSGIfExists {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ResourceGroupName,
+
+        [Parameter(Mandatory)]
+        [string]$NSGName
+    )
+
+    Get-AzNetworkSecurityGroup -Name $NSGName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+}
+
+function Write-DeploymentSummary {
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Properties
+    )
+
+    Write-Host ""
+    Write-Host "Deployment Summary"
+    Write-Host "------------------"
+
+    foreach ($item in $Properties.GetEnumerator()) {
+        Write-Host ("{0,-20}: {1}" -f $item.Key, $item.Value)
+    }
+
+    Write-Host ""
+}
