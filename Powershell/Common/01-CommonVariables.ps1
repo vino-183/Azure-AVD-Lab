@@ -33,8 +33,6 @@ $HostPoolName = 'hp-avdlab-pooled-001'
 
 $WorkspaceName = 'ws-avdlab-001'
 
-$ApplicationGroupName = 'dag-avdlab-desktop-001'
-
 #endregion
 $Global:HostPoolName        = "hp-avdlab-pooled-001"
 
@@ -48,4 +46,6 @@ $Global:MaxSessionLimit     = 10
 
 $Global:StartVMOnConnect    = $true
 
-$Global:PreferredAppGroupType
+$Global:ApplicationGroupName = "dag-avdlab-001"
+
+$Global:ApplicationGroupType = "Desktop"

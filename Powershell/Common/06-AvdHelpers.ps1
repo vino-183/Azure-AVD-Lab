@@ -1,5 +1,5 @@
 <#
-    File    : 04-AvdHelpers.ps1
+    File    : 06-AvdHelpers.ps1
     Version : 1.1.0
     Purpose : AVD-specific helper functions for Session Host registration
 
@@ -19,67 +19,20 @@
 . "$PSScriptRoot\03-AzureHelpers.ps1"
 
 #---------------------------------------
-# Session Host VM Helpers
+# Minimal AVD Helpers
 #---------------------------------------
 
-function Get-SessionHostVM {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$Name,
-        [Parameter(Mandatory)][string]$ResourceGroupName
-    )
+function Get-SessionHostVMIfExists { param([string]$ResourceGroupName,[string]$Name) Get-AzVM -ResourceGroupName $ResourceGroupName -Name $Name -Status -ErrorAction SilentlyContinue }
 
-    try {
-        $vm = Get-AzVM -Name $Name -ResourceGroupName $ResourceGroupName -Status -ErrorAction Stop
-        Write-LabLog "VM '$Name' retrieved successfully." -Level SUCCESS
-        return $vm
-    }
-    catch {
-        Write-LabLog "Failed to retrieve VM '$Name': $_" -Level ERROR
-        throw
-    }
-}
+function Get-AvdRegistrationTokenIfExists { param([string]$ResourceGroupName,[string]$HostPoolName) Get-AzWvdRegistrationInfo -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -ErrorAction SilentlyContinue }
 
-#---------------------------------------
-# Registration Token Helpers
-#---------------------------------------
+function New-AvdRegistrationToken { param([string]$ResourceGroupName,[string]$HostPoolName) New-AzWvdRegistrationInfo -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -ExpirationTime (Get-Date).AddHours(4) -ErrorAction SilentlyContinue }
 
-function Get-AvdRegistrationToken {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$HostPoolName,
-        [Parameter(Mandatory)][string]$ResourceGroupName
-    )
+function Get-AvdSessionHostIfExists { param([string]$ResourceGroupName,[string]$HostPoolName,[string]$Name) Get-AzWvdSessionHost -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -Name $Name -ErrorAction SilentlyContinue }
 
-    try {
-        $token = Get-AzWvdRegistrationInfo -HostPoolName $HostPoolName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
-        Write-LabLog "Registration token retrieved for Host Pool '$HostPoolName'." -Level SUCCESS
-        return $token
-    }
-    catch {
-        Write-LabLog "Failed to retrieve registration token: $_" -Level ERROR
-        throw
-    }
-}
+function Test-HostPoolIfExists { param([string]$ResourceGroupName,[string]$HostPoolName) Get-AzWvdHostPool -ResourceGroupName $ResourceGroupName -Name $HostPoolName -ErrorAction SilentlyContinue }
 
-function New-AvdRegistrationToken {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$HostPoolName,
-        [Parameter(Mandatory)][string]$ResourceGroupName,
-        [switch]$ForceNewToken
-    )
-
-    try {
-        $token = New-AzWvdRegistrationInfo -HostPoolName $HostPoolName -ResourceGroupName $ResourceGroupName -ExpirationTime (Get-Date).AddHours(4) -ErrorAction Stop
-        Write-LabLog "New registration token created for Host Pool '$HostPoolName'." -Level SUCCESS
-        return $token
-    }
-    catch {
-        Write-LabLog "Failed to create registration token: $_" -Level ERROR
-        throw
-    }
-}
+function Test-AppGroupIfExists { param([string]$ResourceGroupName,[string]$AppGroupName) Get-AzWvdApplicationGroup -ResourceGroupName $ResourceGroupName -Name $AppGroupName -ErrorAction SilentlyContinue }
 
 #---------------------------------------
 # Agent & Boot Loader Installation
@@ -88,8 +41,8 @@ function New-AvdRegistrationToken {
 function Install-AvdAgent {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$VMName,
-        [Parameter(Mandatory)][string]$ResourceGroupName
+        [string]$VMName,
+        [string]$ResourceGroupName
     )
 
     try {
@@ -116,8 +69,8 @@ function Install-AvdAgent {
 function Install-AvdBootLoader {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$VMName,
-        [Parameter(Mandatory)][string]$ResourceGroupName
+        [string]$VMName,
+        [string]$ResourceGroupName
     )
 
     try {
@@ -148,10 +101,10 @@ function Install-AvdBootLoader {
 function Register-AvdSessionHost {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$VMName,
-        [Parameter(Mandatory)][string]$HostPoolName,
-        [Parameter(Mandatory)][string]$ResourceGroupName,
-        [Parameter(Mandatory)][string]$Token
+        [string]$VMName,
+        [string]$HostPoolName,
+        [string]$ResourceGroupName,
+        [string]$Token
     )
 
     try {
@@ -173,25 +126,6 @@ function Register-AvdSessionHost {
     }
     catch {
         Write-LabLog "Failed to register Session Host: $_" -Level ERROR
-        throw
-    }
-}
-
-function Get-AvdSessionHost {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$HostPoolName,
-        [Parameter(Mandatory)][string]$ResourceGroupName,
-        [Parameter(Mandatory)][string]$Name
-    )
-
-    try {
-        $sessionHost = Get-AzWvdSessionHost -HostPoolName $HostPoolName -ResourceGroupName $ResourceGroupName -Name $Name -ErrorAction Stop
-        Write-LabLog "Session Host '$Name' retrieved successfully." -Level SUCCESS
-        return $sessionHost
-    }
-    catch {
-        Write-LabLog "Failed to retrieve Session Host '$Name': $_" -Level ERROR
         throw
     }
 }
