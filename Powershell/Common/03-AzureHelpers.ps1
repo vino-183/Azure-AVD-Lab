@@ -23,6 +23,9 @@
 #---------------------------------------    
     #Write-LabLog
 #---------------------------------------
+
+. "$PSScriptRoot\00-FrameworkRequirements.ps1"
+
 function Write-LabLog {
     [CmdletBinding()]
     param(
@@ -68,19 +71,7 @@ function Write-Step {
 #---------------------------------------
     # Test-AzLogin
 #---------------------------------------
-function Test-AzLogin {
-    [CmdletBinding()]
-    param()
-    try {
-        $null = Get-AzContext -ErrorAction Stop
 
-        Write-LabLog "Azure session found." -Level "SUCCESS"
-    }
-    catch {
-        Write-LabLog "No Azure session found. Signing in..." -Level "WARNING"
-        Connect-AzAccount
-    }
-}
 
 #---------------------------------------
     # Test-Subscription
@@ -98,11 +89,6 @@ function Test-Subscription {
 }
 
 
-<#
-================================================================================
-Test-LabPrerequisites
-================================================================================
-#>
 function Validate-AzContext {
     [CmdletBinding()]
     param()
@@ -117,39 +103,83 @@ function Validate-AzContext {
 
     return $context
 }
-
+<#
+================================================================================
+Test-LabPrerequisites
+================================================================================
+#>
 function Test-LabPrerequisites {
 
     [CmdletBinding()]
     param()
+    #--------------------------------------------------
+    # Validate PowerShell Version
+    #--------------------------------------------------
 
-    Write-LabLog "Validating prerequisites..."
+    if ($PSVersionTable.PSVersion -lt $FrameworkRequirements.PowerShell) {
 
-    # Verify Az PowerShell module
-    try {
-        if (-not (Get-Module -Name Az)) {
-    Import-Module Az -ErrorAction Stop
-}
+        Write-LabLog "PowerShell $($PSVersionTable.PSVersion) detected." -Level ERROR
+        Write-LabLog "Minimum required version is $($FrameworkRequirements.PowerShell)." -Level ERROR
 
-Write-LabLog "Az PowerShell module loaded successfully." -Level SUCCESS
-    }
-    catch {
-        Write-LabLog "Unable to load the Az PowerShell module." -Level ERROR
         return $false
     }
 
-    # Verify Azure Login
+    Write-LabLog "PowerShell $($PSVersionTable.PSVersion) verified." -Level SUCCESS
+
+
+    #--------------------------------------------------
+    # Validate Az Module Versions
+    #--------------------------------------------------
+
+    foreach ($module in $FrameworkRequirements.Modules.GetEnumerator()) {
+
+        if (-not (Test-ModuleVersion `
+            -ModuleName $module.Key `
+            -MinimumVersion $module.Value))
+        {
+            return $false
+        }
+    }
+
+
+    #--------------------------------------------------
+    # Import Az Module
+    #--------------------------------------------------
+
     try {
+
+        Import-Module Az -ErrorAction Stop
+
+        Write-LabLog "Az PowerShell module loaded successfully." -Level SUCCESS
+    }
+    catch {
+
+        Write-LabLog "Unable to load the Az PowerShell module." -Level ERROR
+
+        return $false
+    }
+
+
+    #--------------------------------------------------
+    # Validate Azure Authentication
+    #--------------------------------------------------
+
+    try {
+
         Get-AzContext -ErrorAction Stop | Out-Null
+
         Write-LabLog "Azure authentication verified." -Level SUCCESS
     }
     catch {
+
         Write-LabLog "You are not connected to Azure." -Level ERROR
+
         return $false
     }
 
     return $true
 }
+
 #---------------------------------------
 # Generic Helpers
 #---------------------------------------
@@ -226,13 +256,13 @@ function Test-SubnetIfExists {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [Microsoft.Azure.Commands.Network.Models.PSVirtualNetwork]$VirtualNetwork,
+        $VirtualNetwork,
 
         [Parameter(Mandatory)]
         [string]$SubnetName
     )
 
-    $VirtualNetwork.Subnets | Where-Object { $_.Name -eq $SubnetName }
+    return ($VirtualNetwork.Subnets.Name -contains $SubnetName)
 }
 
 #---------------------------------------
@@ -249,6 +279,22 @@ function Test-PublicIpIfExists {
     )
 
     Get-AzPublicIpAddress -Name $PublicIpName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+}
+
+#---------------------------------------
+# Test-NSGIfExists
+#---------------------------------------
+function Test-NSGIfExists {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ResourceGroupName,
+
+        [Parameter(Mandatory)]
+        [string]$NSGName
+    )
+
+    Get-AzNetworkSecurityGroup -Name $NSGName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 }
 
 #---------------------------------------
@@ -299,22 +345,6 @@ function Test-DiskIfExists {
     Get-AzDisk -Name $DiskName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 }
 
-#---------------------------------------
-# Test-NSGIfExists
-#---------------------------------------
-function Test-NSGIfExists {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$ResourceGroupName,
-
-        [Parameter(Mandatory)]
-        [string]$NSGName
-    )
-
-    Get-AzNetworkSecurityGroup -Name $NSGName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
-}
-
 function Write-DeploymentSummary {
     param(
         [Parameter(Mandatory)]
@@ -330,4 +360,212 @@ function Write-DeploymentSummary {
     }
 
     Write-Host ""
+}
+
+function Get-LabCredential {
+    [CmdletBinding()]
+    param(
+        [string]$Message = "Enter local administrator credentials"
+    )
+
+    return Get-Credential -Message $Message
+}
+
+function Test-ModuleVersion {
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleName,
+
+        [Parameter(Mandatory)]
+        [version]$MinimumVersion
+    )
+
+    $module = Get-Module `
+        -ListAvailable `
+        -Name $ModuleName |
+        Sort-Object Version -Descending |
+        Select-Object -First 1
+
+    if (-not $module) {
+
+        Write-LabLog "$ModuleName is not installed." -Level ERROR
+        return $false
+    }
+
+    if ($module.Version -lt $MinimumVersion) {
+
+        Write-LabLog "$ModuleName version $($module.Version) detected. Minimum required version is $MinimumVersion." -Level ERROR
+        return $false
+    }
+
+    Write-LabLog "$ModuleName version $($module.Version) verified." -Level SUCCESS
+    return $true
+}
+
+function Test-StorageAccountIfExists {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$StorageAccountName,
+
+        [Parameter(Mandatory)]
+        [string]$ResourceGroupName
+    )
+
+    try {
+        $null = Get-AzStorageAccount `
+            -ResourceGroupName $ResourceGroupName `
+            -Name $StorageAccountName `
+            -ErrorAction Stop
+
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-NetworkInterfaceIfExists {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$NetworkInterfaceName,
+
+        [Parameter(Mandatory)]
+        [string]$ResourceGroupName
+    )
+
+    try {
+        $null = Get-AzNetworkInterface `
+            -Name $NetworkInterfaceName `
+            -ResourceGroupName $ResourceGroupName `
+            -ErrorAction Stop
+
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-LabVmSku
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string]$Location,
+
+        [Parameter()]
+        [int]$vCPU = 2,
+
+        [Parameter()]
+        [int]$MemoryGB = 4,
+
+        [Parameter()]
+        [switch]$RequirePremiumStorage
+    )
+
+    Write-LabLog "Searching available VM SKUs in '$Location'..." -Level Info
+
+    # Normalize location (e.g. "East US" -> "eastus")
+$NormalizedLocation = ($Location -replace '\s','').ToLower()
+
+$Skus = $Skus | Where-Object {
+
+    $Locations = $_.Locations | ForEach-Object {
+        ($_ -replace '\s','').ToLower()
+    }
+
+    $Locations -contains $NormalizedLocation
+}
+    # Step 1 – Retrieve all SKUs
+    $Skus = Get-AzComputeResourceSku
+    Write-LabLog "Total SKUs returned: $($Skus.Count)" -Level Info
+
+    # Step 2 – Filter to virtual machines
+    $Skus = $Skus | Where-Object {
+        $_.ResourceType -eq "virtualMachines"
+    }
+    Write-LabLog "Virtual Machine SKUs: $($Skus.Count)" -Level Info
+
+    # Step 3 – Filter by location
+# Step 3 – Filter by location
+$NormalizedLocation = ($Location -replace '\s','').ToLower()
+
+$Skus = $Skus | Where-Object {
+
+    $SkuLocations = $_.Locations | ForEach-Object {
+        ($_ -replace '\s','').ToLower()
+    }
+
+    $SkuLocations -contains $NormalizedLocation
+}
+
+Write-LabLog "$Location SKUs: $($Skus.Count)" -Level Info
+
+    # Step 4 – Filter x64 architecture
+    $Skus = $Skus | Where-Object {
+        ($_.Capabilities | Where-Object Name -eq "CpuArchitectureType").Value -contains "x64"
+    }
+    Write-LabLog "x64 SKUs: $($Skus.Count)" -Level Info
+
+    # Step 5 – Remove restricted SKUs
+    $Skus = $Skus | Where-Object {
+        $_.Restrictions.Count -eq 0
+    }
+    Write-LabLog "Unrestricted SKUs: $($Skus.Count)" -Level Info
+
+    # Candidate selection
+    $Candidates = foreach ($Sku in $Skus)
+    {
+        $Cpu       = ($Sku.Capabilities | Where-Object Name -eq "vCPUs").Value
+        $Memory    = ($Sku.Capabilities | Where-Object Name -eq "MemoryGB").Value
+        $PremiumIO = ($Sku.Capabilities | Where-Object Name -eq "PremiumIO").Value
+
+        if (-not $Cpu -or -not $Memory) { continue }
+
+        if ($RequirePremiumStorage -and $PremiumIO -ne "True") { continue }
+
+        if ([int]$Cpu -eq $vCPU -and [double]$Memory -ge $MemoryGB)
+        {
+            [PSCustomObject]@{
+                Name      = $Sku.Name
+                MemoryGB  = [double]$Memory
+                PremiumIO = $PremiumIO
+            }
+        }
+    }
+
+    Write-LabLog "Candidate SKUs after vCPU/Memory filter: $($Candidates.Count)" -Level Info
+
+    if (-not $Candidates)
+    {
+        throw "No suitable VM SKU found in '$Location'."
+    }
+
+    # Rank preferred VM families
+    $FamilyOrder = @("Standard_D","Standard_B","Standard_E","Standard_F","Standard_A")
+
+    foreach ($Family in $FamilyOrder)
+    {
+        $Match = $Candidates |
+            Where-Object { $_.Name -like "$Family*" } |
+            Sort-Object MemoryGB |
+            Select-Object -First 1
+
+        if ($Match)
+        {
+            Write-LabLog "Selected VM SKU: $($Match.Name)" -Level Success
+            return $Match.Name
+        }
+    }
+
+    # Fallback if no preferred family matched
+    $Selected = $Candidates | Sort-Object MemoryGB | Select-Object -First 1
+    Write-LabLog "Selected VM SKU: $($Selected.Name)" -Level Success
+
+    return $Selected.Name
 }
