@@ -29,10 +29,6 @@ $LogFile = "$LogFolderPath\AVD-Lab-Deployment-$(Get-Date -Format 'yyyyMMdd-HHmms
 
 $StorageAccountName = 'stavdprofile001'
 
-$HostPoolName = 'hp-avdlab-pooled-001'
-
-$WorkspaceName = 'ws-avdlab-001'
-
 #endregion
 $Global:HostPoolName        = "hp-avdlab-pooled-001"
 
@@ -49,3 +45,9 @@ $Global:StartVMOnConnect    = $true
 $Global:ApplicationGroupName = "dag-avdlab-001"
 
 $Global:ApplicationGroupType = "Desktop"
+
+$Global:WorkspaceName = "ws-avdlab-001"
+
+$Global:WorkspaceFriendlyName = "AVD Lab Workspace"
+
+$Global:WorkspaceDescription = "Azure Virtual Desktop Lab Workspace"

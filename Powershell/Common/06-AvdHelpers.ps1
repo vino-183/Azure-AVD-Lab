@@ -16,7 +16,7 @@
             - Return values for install functions
 #>
 
-. "$PSScriptRoot\03-AzureHelpers.ps1"
+. "$PSScriptRoot\..\Common\03-AzureHelpers.ps1"
 
 #---------------------------------------
 # Minimal AVD Helpers
@@ -26,13 +26,17 @@ function Get-SessionHostVMIfExists { param([string]$ResourceGroupName,[string]$N
 
 function Get-AvdRegistrationTokenIfExists { param([string]$ResourceGroupName,[string]$HostPoolName) Get-AzWvdRegistrationInfo -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -ErrorAction SilentlyContinue }
 
-function New-AvdRegistrationToken { param([string]$ResourceGroupName,[string]$HostPoolName) New-AzWvdRegistrationInfo -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -ExpirationTime (Get-Date).AddHours(4) -ErrorAction SilentlyContinue }
+function New-AvdRegistrationToken { param([string]$ResourceGroupName,[string]$HostPoolName) New-AzWvdRegistrationInfo -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -ExpirationTime (Get-Date).AddHours(4) -ErrorAction Stop }
 
 function Get-AvdSessionHostIfExists { param([string]$ResourceGroupName,[string]$HostPoolName,[string]$Name) Get-AzWvdSessionHost -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -Name $Name -ErrorAction SilentlyContinue }
 
 function Test-HostPoolIfExists { param([string]$ResourceGroupName,[string]$HostPoolName) Get-AzWvdHostPool -ResourceGroupName $ResourceGroupName -Name $HostPoolName -ErrorAction SilentlyContinue }
 
 function Test-AppGroupIfExists { param([string]$ResourceGroupName,[string]$AppGroupName) Get-AzWvdApplicationGroup -ResourceGroupName $ResourceGroupName -Name $AppGroupName -ErrorAction SilentlyContinue }
+
+function Test-WorkspaceIfExists { param([string]$ResourceGroupName,[string]$WorkspaceName) Get-AzWvdWorkspace -ResourceGroupName $ResourceGroupName -Name $WorkspaceName -ErrorAction SilentlyContinue }
+
+function Get-WorkspaceIfExists { param([string]$ResourceGroupName,[string]$WorkspaceName) Get-AzWvdWorkspace -ResourceGroupName $ResourceGroupName -Name $WorkspaceName -ErrorAction SilentlyContinue }
 
 #---------------------------------------
 # Agent & Boot Loader Installation
