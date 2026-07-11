@@ -36,3 +36,16 @@ $WorkspaceName = 'ws-avdlab-001'
 $ApplicationGroupName = 'dag-avdlab-desktop-001'
 
 #endregion
+$Global:HostPoolName        = "hp-avdlab-pooled-001"
+
+$Global:HostPoolType        = "Pooled"
+
+$Global:LoadBalancerType    = "BreadthFirst"
+
+$Global:PreferredAppGroupType   = "Desktop"
+
+$Global:MaxSessionLimit     = 10
+
+$Global:StartVMOnConnect    = $true
+
+$Global:PreferredAppGroupType
