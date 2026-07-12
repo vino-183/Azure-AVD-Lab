@@ -1,6 +1,6 @@
 # Session Host VM
 
-$VMName = "vm-avdlab-sh01"
+$VMName = "vm-avdlab-sessionhost01"
 
 $VMSize = "Standard_D2s_v5"
 
