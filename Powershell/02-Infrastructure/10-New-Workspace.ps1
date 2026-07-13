@@ -20,8 +20,8 @@ param(
     [string]$Location              = $Global:Location
 )
 
-. "$PSScriptRoot\..\Common\01-CommonVariables.ps1"
-. "$PSScriptRoot\..\Common\06-AvdHelpers.ps1"
+# Import modules
+. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
 # Validate required values
 if ([string]::IsNullOrWhiteSpace($WorkspaceName)) { throw "WorkspaceName is required." }

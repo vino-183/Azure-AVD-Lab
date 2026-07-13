@@ -1,8 +1,8 @@
 <#
  .SYNOPSIS
-    Creates a new session host virtual machine in Azure Virtual Desktop (AVD) environment.
+    Creates a new Azure virtual machine in Azure Virtual Desktop (AVD) environment.
  .DESCRIPTION
-    This script creates a new session host VM in an Azure Virtual Desktop (AVD) environment.
+    This script creates a new Virtual Machine.
     It configures the VM using the specified parameters, including name, size, image, OS disk, and network settings.
  .AUTHOR
     Vinodh
@@ -11,7 +11,7 @@
  .NOTES
     Part of the Azure-AVD-Lab project. Assumes prerequisites (RG, VNet, Subnet, NIC, Storage) already exist.
  .EXAMPLE
-    .\06-New-SessionHostVM.ps1 -WhatIf
+    .\06-New-VirtualMachine.ps1 -WhatIf
 #>
 
 #CmdletBinding(SupportsShouldProcess)
@@ -19,11 +19,7 @@
 param()
 
 # Import common modules
-. "$PSScriptRoot\..\Common\01-CommonVariables.ps1"
-. "$PSScriptRoot\..\Common\02-NetworkVariables.ps1"
-. "$PSScriptRoot\..\Common\03-AzureHelpers.ps1"
-. "$PSScriptRoot\..\Common\04-VM-Variables.ps1"
-. "$PSScriptRoot\..\Common\05-StorageVariables.ps1"
+. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
 # Validate prerequisites
 if (-not (Test-LabPrerequisites)) {
@@ -77,7 +73,7 @@ throw "VM already exists."
 }
 
 # Prompt for credentials
-if ($PSCmdlet.ShouldProcess($VMName, "Create Session Host VM")) {
+if ($PSCmdlet.ShouldProcess($VMName, "Create Virtual Machine")) {
 # Determine the best available VM SKU
 Write-LabLog "Searching for an available VM SKU..." -Level Info
 
@@ -90,7 +86,7 @@ $VMSize = Get-LabVmSku `
 Write-LabLog "Using VM Size '$VMSize'." -Level Info
 
 # Prompt for credentials only after a valid SKU is found
-$AdminCredential = Get-LabCredential -Message "Enter credentials for the new session host VM '$VMName'"
+$AdminCredential = Get-LabCredential -Message "Enter credentials for the new Virtual Machine '$VMName'"
 
 # Build VM configuration
 $vmConfig = New-AzVMConfig -VMName $VMName -VMSize $VMSize
@@ -109,7 +105,7 @@ $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
 
 # Create VM
 
-Write-LabLog "Creating Session Host VM '$VMName'..."
+Write-LabLog "Creating Virtual Machine '$VMName'..."
 
 New-AzVM -ResourceGroupName $ResourceGroupName -Location $Location -VM $vmConfig -ErrorAction Stop
 

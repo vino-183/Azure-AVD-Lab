@@ -18,20 +18,22 @@
 [CmdletBinding()]
 param(
     [string]$ResourceGroupName,
-
-    [Parameter(Mandatory)]
-    [ValidateNotNullOrEmpty()]
     [string]$VMName
 )
 
-# Import framework and helpers
-. "$PSScriptRoot\..\Common\00-FrameworkRequirements.ps1"
-. "$PSScriptRoot\..\Common\01-CommonVariables.ps1"
-. "$PSScriptRoot\..\Common\03-AzureHelpers.ps1"
-. "$PSScriptRoot\..\Common\06-AvdHelpers.ps1"
+# Import modules
+. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
 # Apply defaults if parameters not provided
 if (-not $ResourceGroupName) { $ResourceGroupName = $Global:ResourceGroupName }
+
+function Get-VmPowerState {
+    param([string]$ResourceGroupName,[string]$VMName)
+    $status = (Get-AzVM -ResourceGroupName $ResourceGroupName -Name $VMName -Status).Statuses |
+              Where-Object { $_.Code -like "PowerState/*" } |
+              Select-Object -ExpandProperty DisplayStatus
+    return $status
+}
 
 try {
     Write-LabLog "Validating Azure connection..." -Level Info
@@ -50,20 +52,29 @@ try {
         throw "VM '$VMName' not found in resource group '$ResourceGroupName'."
     }
 
-    # Ensure VM is running (poll with timeout)
-    if (-not (Test-VMRunning -ResourceGroupName $ResourceGroupName -VMName $VMName)) {
-        Write-LabLog "VM '$VMName' is not running. Starting VM..." -Level Info
+    # Check VM power state
+    $vmStatus = Get-VmPowerState -ResourceGroupName $ResourceGroupName -VMName $VMName
+    if ($vmStatus -ne "VM running") {
+        Write-LabLog "VM '$VMName' is currently in state: $vmStatus." -Level Warning
+
+        Write-LabLog "Attempting to start VM '$VMName'..." -Level Info
         Start-AzVM -ResourceGroupName $ResourceGroupName -Name $VMName -ErrorAction Stop
 
         $timeout = 300; $elapsed = 0
-        while (-not (Test-VMRunning -ResourceGroupName $ResourceGroupName -VMName $VMName)) {
+        do {
             if ($elapsed -ge $timeout) {
                 throw "VM '$VMName' failed to start within $timeout seconds."
             }
+            Write-LabLog "Waiting for VM '$VMName' to start... elapsed $elapsed seconds (current state: $vmStatus)" -Level Info
             Start-Sleep 10; $elapsed += 10
-        }
+            $vmStatus = Get-VmPowerState -ResourceGroupName $ResourceGroupName -VMName $VMName
+        } while ($vmStatus -ne "VM running")
+
+        Write-LabLog "VM '$VMName' is now running." -Level Success
     }
-    Write-LabLog "VM '$VMName' is running." -Level Info
+    else {
+        Write-LabLog "VM '$VMName' is already running." -Level Info
+    }
 
     # Check if agent already installed
     if (Test-AvdAgentInstalled -VMName $VMName -ResourceGroupName $ResourceGroupName) {
@@ -75,19 +86,13 @@ try {
         }
     }
     else {
-        Write-LabLog "Copying AVD Agent installer to VM '$VMName'..." -Level Info
-        $installer = Get-AvdAgentInstaller
-        Copy-AvdAgentInstallerToVM -VMName $VMName -ResourceGroupName $ResourceGroupName -InstallerPath $installer
-
         Write-LabLog "Installing AVD Agent on VM '$VMName'..." -Level Info
         $result = Install-AvdAgent -VMName $VMName -ResourceGroupName $ResourceGroupName
 
-        Write-LabLog "Verifying AVD Agent installation..." -Level Info
         if (-not (Test-AvdAgentInstalled -VMName $VMName -ResourceGroupName $ResourceGroupName)) {
             throw "AVD Agent installation failed on VM '$VMName'."
         }
 
-        # Always retrieve version after verification
         $result.Version = Get-AvdAgentVersion -VMName $VMName -ResourceGroupName $ResourceGroupName
         Write-LabLog "AVD Agent installed successfully (Version $($result.Version))." -Level Success
     }
@@ -96,7 +101,7 @@ try {
     Show-DeploymentSummary @{
         "VM Name"        = $VMName
         "Resource Group" = $ResourceGroupName
-        "Agent"          = "Installed"
+        "Agent"          = if ($result.Success) { "Installed" } else { "Not Installed" }
         "Version"        = $result.Version
         "Status"         = if ($result.Success) { "Success" } else { "Failed" }
         "Install Time"   = $result.InstallTime

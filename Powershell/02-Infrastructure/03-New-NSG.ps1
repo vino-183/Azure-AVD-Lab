@@ -2,9 +2,7 @@
 param()
 
 # Import common variables and helper functions
-. "$PSScriptRoot\..\Common\01-GlobalVariables.ps1"
-. "$PSScriptRoot\..\Common\02-NetworkVariables.ps1"
-. "$PSScriptRoot\..\Common\03-AzureHelpers.ps1"
+. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
 foreach ($moduleName in $requiredModules) {
     if (-not (Get-Module -ListAvailable -Name $moduleName)) {

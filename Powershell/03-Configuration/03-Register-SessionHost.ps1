@@ -27,11 +27,8 @@ param(
     [string]$RegistrationToken
 )
 
-# Import framework and helpers
-. "$PSScriptRoot\..\Common\00-FrameworkRequirements.ps1"
-. "$PSScriptRoot\..\Common\01-CommonVariables.ps1"
-. "$PSScriptRoot\..\Common\03-AzureHelpers.ps1"
-. "$PSScriptRoot\..\Common\06-AvdHelpers.ps1"
+# Import modules
+. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
 # Apply defaults if parameters not provided
 if (-not $ResourceGroupName) { $ResourceGroupName = $Global:ResourceGroupName }

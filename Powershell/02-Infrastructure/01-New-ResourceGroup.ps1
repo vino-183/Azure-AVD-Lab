@@ -18,9 +18,7 @@ Learning Objectives
 param()
 # Import common modules
 
-. "$PSScriptRoot\..\Common\01-GlobalVariables.ps1"
-#. "$PSScriptRoot\..\Common\02-NetworkVariables.ps1"
-. "$PSScriptRoot\..\Common\AzureHelpers.ps1"
+. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
 # Validate prerequisites
 

@@ -25,11 +25,7 @@ param(
 )
 
 # Import modules
-. "$PSScriptRoot\..\Common\03-AzureHelpers.ps1"
-. "$PSScriptRoot\..\Common\06-AvdHelpers.ps1"
-
-# Import global variables
-. "$PSScriptRoot\..\Common\01-CommonVariables.ps1"
+. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
 Write-LabLog "Starting Application Group creation..." -Level INFO
 

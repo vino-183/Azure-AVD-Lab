@@ -19,6 +19,7 @@
 . "$PSScriptRoot\..\Common\00-FrameworkRequirements.ps1"
 . "$PSScriptRoot\..\Common\01-CommonVariables.ps1"
 . "$PSScriptRoot\..\Common\03-AzureHelpers.ps1"
+. "$PSScriptRoot\..\Common\04-VM-Variables.ps1"
 
 #---------------------------------------
 # Minimal AVD Helpers
@@ -58,13 +59,29 @@ function Install-AvdAgent {
             Invoke-WebRequest -Uri "https://aka.ms/avdagent" -OutFile "C:\Temp\AVDAgent.msi"
 '@ -ErrorAction Stop
 
-        Write-LabLog "Installing AVD Agent on VM '$VMName'..." -Level INFO
-        Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroupName -Name $VMName -CommandId 'RunPowerShellScript' -ScriptString @'
-            Start-Process msiexec.exe -ArgumentList "/i C:\Temp\AVDAgent.msi /quiet /norestart" -Wait
+        Write-LabLog "Running AVD Agent installer on VM '$VMName'..." -Level INFO
+        $installResult = Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroupName -Name $VMName -CommandId 'RunPowerShellScript' -ScriptString @'
+            $process = Start-Process msiexec.exe -ArgumentList "/i C:\Temp\AVDAgent.msi /quiet /norestart" -Wait -PassThru
+            Write-Output "ExitCode=$($process.ExitCode)"
 '@ -ErrorAction Stop
 
-        Write-LabLog "Verifying AVD Agent installation..." -Level INFO
-        if (-not (Test-AvdAgentInstalled -VMName $VMName -ResourceGroupName $ResourceGroupName)) {
+        Write-LabLog "Installer process completed. $($installResult.Value)" -Level INFO
+
+        # Retry loop for service detection
+        $maxRetries = 6   # 6 x 10s = 60 seconds
+        $retry = 0
+        $installed = $false
+        while (-not $installed -and $retry -lt $maxRetries) {
+            Write-LabLog "Checking AVD Agent service (attempt $($retry+1))..." -Level INFO
+            $installed = Test-AvdAgentInstalled -VMName $VMName -ResourceGroupName $ResourceGroupName
+            if (-not $installed) {
+                Start-Sleep -Seconds 10
+                $retry++
+            }
+        }
+
+        if (-not $installed) {
+            Write-LabLog "AVD Agent service not detected on VM '$VMName' after install attempts." -Level ERROR
             throw "AVD Agent installation failed on VM '$VMName'."
         }
 
@@ -79,10 +96,13 @@ function Install-AvdAgent {
     }
     catch {
         Write-LabLog "Failed to install AVD Agent: $_" -Level ERROR
-        throw
+        return [PSCustomObject]@{
+            Success     = $false
+            Version     = $null
+            InstallTime = $null
+        }
     }
 }
-
 
 function Install-AvdBootLoader {
     [CmdletBinding()]
@@ -122,31 +142,92 @@ function Register-AvdSessionHost {
         [string]$VMName,
         [string]$HostPoolName,
         [string]$ResourceGroupName,
-        [string]$Token
+        [string]$Token,
+        [int]$TimeoutSeconds = 300,
+        [switch]$Force
     )
 
     try {
-        Write-LabLog "Registering VM '$VMName' as Session Host in Host Pool '$HostPoolName'..." -Level INFO
+        Write-LabLog "Preparing to register VM '$VMName' in Host Pool '$HostPoolName'..." -Level INFO
 
-        # NOTE: Modern AVD agent registration typically uses the token during installation.
-        # Verify in your lab whether rdinfraagent.exe /register works reliably.
-        Invoke-AzVMRunCommand `
-            -ResourceGroupName $ResourceGroupName `
-            -Name $VMName `
-            -CommandId 'RunPowerShellScript' `
-            -ScriptString @"
-                & "C:\Program Files\Microsoft RDInfra\RDInfraAgent\rdinfraagent.exe" /register $Token
+        # Check if already registered
+        $alreadyRegistered = Test-SessionHostRegistered -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -VMName $VMName
+        if ($alreadyRegistered -and -not $Force) {
+            Write-LabLog "VM '$VMName' is already registered in Host Pool '$HostPoolName'. Use -Force to re-register." -Level Warning
+            return [PSCustomObject]@{
+                Success        = $true
+                RegisteredTime = Get-Date
+                Message        = "Already registered"
+            }
+        }
+
+        $maxRetries = 3
+        $retry = 0
+        $registered = $false
+
+        while (-not $registered -and $retry -lt $maxRetries) {
+            Write-LabLog "Executing registration command inside VM '$VMName' (attempt $($retry+1))..." -Level INFO
+            try {
+                Invoke-AzVMRunCommand `
+                    -ResourceGroupName $ResourceGroupName `
+                    -Name $VMName `
+                    -CommandId 'RunPowerShellScript' `
+                    -ScriptString @"
+                        & "C:\Program Files\Microsoft RDInfra\RDInfraAgent\rdinfraagent.exe" /register $Token
 "@ `
-            -ErrorAction Stop
+                    -ErrorAction Stop
+            }
+            catch {
+                Write-LabLog "Registration command failed on attempt $($retry+1): $_" -Level Warning
+            }
 
-        Write-LabLog "Session Host registration initiated for VM '$VMName'." -Level SUCCESS
-        return $true
+            # Poll for registration status
+            $elapsed = 0
+            while (-not (Test-SessionHostRegistered -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -VMName $VMName)) {
+                if ($elapsed -ge $TimeoutSeconds) {
+                    Write-LabLog "Session Host '$VMName' failed to register within $TimeoutSeconds seconds (attempt $($retry+1))." -Level ERROR
+                    break
+                }
+                Write-LabLog "Waiting for Session Host '$VMName' to register... elapsed $elapsed seconds." -Level INFO
+                Start-Sleep 10
+                $elapsed += 10
+            }
+
+            if (Test-SessionHostRegistered -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -VMName $VMName) {
+                $registered = $true
+                break
+            }
+
+            $retry++
+        }
+
+        if ($registered) {
+            Write-LabLog "Session Host '$VMName' successfully registered in Host Pool '$HostPoolName'." -Level SUCCESS
+            return [PSCustomObject]@{
+                Success        = $true
+                RegisteredTime = Get-Date
+                Message        = "Registered successfully"
+            }
+        }
+        else {
+            Write-LabLog "Session Host '$VMName' failed to register after $maxRetries attempts." -Level ERROR
+            return [PSCustomObject]@{
+                Success        = $false
+                RegisteredTime = $null
+                Message        = "Registration failed"
+            }
+        }
     }
     catch {
-        Write-LabLog "Failed to register Session Host: $_" -Level ERROR
-        throw
+        Write-LabLog "Exception during registration: $_" -Level ERROR
+        return [PSCustomObject]@{
+            Success        = $false
+            RegisteredTime = $null
+            Message        = "Exception during registration"
+        }
     }
 }
+
 #---------------------------------------
 # Agent Installation Checks
 #---------------------------------------
@@ -374,4 +455,13 @@ function Get-OrCreateAvdRegistrationToken {
         $tokenObj = New-AvdRegistrationToken -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName
     }
     return $tokenObj.Token
+}
+function Test-AzureConnection {
+    try {
+        $ctx = Get-AzContext
+        return ($ctx -ne $null -and $ctx.Account -ne $null)
+    }
+    catch {
+        return $false
+    }
 }

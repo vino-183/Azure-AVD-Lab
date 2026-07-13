@@ -19,13 +19,12 @@
 param(
     [string]$ResourceGroupName,
     [string]$HostPoolName,
-    [switch]$Force
+    [switch]$Force,
+    [int]$TokenValidityHours = 4
 )
 
-# Import framework and helpers
-. "$PSScriptRoot\..\Common\00-FrameworkRequirements.ps1"
-. "$PSScriptRoot\..\Common\01-CommonVariables.ps1"
-. "$PSScriptRoot\..\Common\06-AvdHelpers.ps1"
+# Import modules
+. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
 # Apply defaults if parameters not provided
 if (-not $ResourceGroupName) { $ResourceGroupName = $Global:ResourceGroupName }
@@ -44,17 +43,25 @@ try {
         throw "Host Pool '$HostPoolName' not found."
     }
 
-    # Retrieve or create token using helper
     Write-LabLog "Retrieving registration token..." -Level Info
-    $token = Get-OrCreateAvdRegistrationToken -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -Force:$Force
 
-    Write-LabLog "Registration token retrieved successfully." -Level Success
+    $tokenInfo = Get-AzWvdRegistrationInfo -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName
 
-    # Output token details
-    [PSCustomObject]@{
-        HostPoolName      = $HostPoolName
-        RegistrationToken = $token.Token
-        ExpiryTime        = $token.Expiration
+    if ($Force -or -not $tokenInfo.Token) {
+        Write-LabLog "Generating new registration token..." -Level Warning
+        $tokenInfo = New-AzWvdRegistrationInfo -ResourceGroupName $ResourceGroupName -HostPoolName $HostPoolName -ExpirationTime (Get-Date).AddHours($TokenValidityHours)
+    }
+
+    if ($tokenInfo.Token) {
+        Write-LabLog "Registration token retrieved successfully." -Level Success
+        [PSCustomObject]@{
+            HostPoolName      = $HostPoolName
+            RegistrationToken = $tokenInfo.Token
+            ExpiryTime        = $tokenInfo.ExpirationTime
+        } | Format-Table -AutoSize
+    }
+    else {
+        Write-LabLog "Failed to retrieve or generate a registration token." -Level Error
     }
 }
 catch {

@@ -25,12 +25,7 @@ param(
 )
 
 # Import common modules
-. "$PSScriptRoot\..\Common\01-CommonVariables.ps1"
-. "$PSScriptRoot\..\Common\02-NetworkVariables.ps1"
-. "$PSScriptRoot\..\Common\03-AzureHelpers.ps1"
-. "$PSScriptRoot\..\Common\04-VM-Variables.ps1"
-. "$PSScriptRoot\..\Common\05-StorageVariables.ps1"
-. "$PSScriptRoot\..\Common\06-AvdHelpers.ps1"
+. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
 Write-LabLog "Starting Host Pool creation..." -Level INFO
 
