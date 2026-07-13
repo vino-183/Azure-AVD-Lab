@@ -1,113 +1,119 @@
 <#
-    Title      : 05-New-NetworkInterface.ps1
-    Author     : vinodh
-    Date       : 2026-07-09
-    Description: Module script to create a new Azure Network Interface.
+.SYNOPSIS
+    Create a new Azure Network Interface for the selected lab role.
+
+.DESCRIPTION
+    Reads the VM profile from VMCatalog based on the role provided.
+    Deploys a NIC using the profile’s network configuration.
+
+.AUTHOR
+    Vinodh
+
+.DATE
+    2026-07-13
 #>
 
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
-param()
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [Parameter(Mandatory)]
+    [string]$Role
+)
 
-# import common modules
+# Import common modules
 . "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
-# Load the Session Host profile from the VM Catalog
-$VMProfile = $VMCatalog.SessionHost
-$Network   = $VMProfile.Network
-$NicName = $NicName
+# Validate role
+if (-not $VMCatalog.ContainsKey($Role)) {
+    throw "Unknown VM Role '$Role'."
+}
 
-# validate prerequisites
+# Retrieve profile
+$VMProfile = $VMCatalog[$Role]
+$Network   = $VMProfile.Network
+
+# Validate prerequisites
 Write-LabLog "Validating prerequisites..." -Level INFO
 if (-not (Test-LabPrerequisites)) {
-    Write-LabLog "Prerequisite validation failed. Deployment aborted." -Level ERROR
     throw "Prerequisite validation failed."
 }
 
-# verify resource group exists
+# Verify resource group exists
 if (-not (Test-ResourceGroupIfExists -ResourceGroupName $ResourceGroupName)) {
-    Write-LabLog "Resource group '$ResourceGroupName' does not exist. Deployment aborted." -Level ERROR
-    throw "Resource group validation failed."
+    throw "Resource group '$ResourceGroupName' does not exist."
 }
 
-# verify virtual network exists
+# Verify virtual network exists
 if (-not (Test-VNetIfExists -VNetName $VNetName -ResourceGroupName $ResourceGroupName)) {
-    Write-LabLog "Virtual network '$VNetName' does not exist in resource group '$ResourceGroupName'. Deployment aborted." -Level ERROR
-    throw "Virtual network validation failed."
+    throw "Virtual network '$VNetName' does not exist in resource group '$ResourceGroupName'."
 }
 
-# retrieve the virtual network object
+# Retrieve the virtual network object
 $vnet = Get-AzVirtualNetwork -Name $VNetName -ResourceGroupName $ResourceGroupName
 
-# Explicitly define the subnet for session hosts
+# Validate subnet
 $SubnetName = $Network.SubnetName
-
-# ✅ FIXED: subnet validation now uses vnet object
 if (-not (Test-SubnetIfExists -VirtualNetwork $vnet -SubnetName $SubnetName)) {
-    Write-LabLog "Subnet '$SubnetName' does not exist in Virtual Network '$VNetName'." -Level ERROR
-    throw "Subnet validation failed."
+    throw "Subnet '$SubnetName' does not exist in Virtual Network '$VNetName'."
 }
 
-# retrieve subnet object
+# Retrieve subnet object
 $subnet = Get-AzVirtualNetworkSubnetConfig -Name $SubnetName -VirtualNetwork $vnet
 
-# validate and retrieve NSG if specified
+# Validate and retrieve NSG if specified
 $nsg = $null
 if ($Network.NSGName) {
     if (-not (Test-NSGIfExists -NSGName $Network.NSGName -ResourceGroupName $ResourceGroupName)) {
-        Write-LabLog "Network Security Group '$Network.NSGName' does not exist in resource group '$ResourceGroupName'. Deployment aborted." -Level ERROR
-        throw "Network Security Group validation failed."
+        throw "Network Security Group '$($Network.NSGName)' does not exist in resource group '$ResourceGroupName'."
     }
     $nsg = Get-AzNetworkSecurityGroup -Name $Network.NSGName -ResourceGroupName $ResourceGroupName
 }
 
-# check whether the network interface already exists
-Write-LabLog "Checking if Network Interface '$NicName' exists in Resource Group '$ResourceGroupName'..." -Level INFO
-$nic = Get-AzNetworkInterface -Name $NicName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+# Check whether the NIC already exists
+Write-LabLog "Checking if Network Interface '$($Network.NICName)' exists..." -Level INFO
+$nic = Get-AzNetworkInterface -Name $Network.NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+
 if ($nic) {
-    Write-LabLog "Network Interface '$NicName' already exists. Skipping deployment." -Level SUCCESS
+    Write-LabLog "Network Interface '$($Network.NICName)' already exists. Skipping deployment." -Level SUCCESS
 }
 else {
-    if ($PSCmdlet.ShouldProcess($NicName, "Create Network Interface")) {
+    if ($PSCmdlet.ShouldProcess($Network.NICName, "Create Network Interface")) {
         try {
-            Write-LabLog "Creating Network Interface '$NicName'..." -Level INFO
+            Write-LabLog "Creating Network Interface '$($Network.NICName)'..." -Level INFO
 
             $nicParams = @{
-    Name                   = $NicName
-    ResourceGroupName      = $ResourceGroupName
-    Location               = $Location
-    SubnetId               = $subnet.Id
-    EnableIPForwarding     = $Network.EnableIPForwarding
-    EnableAcceleratedNetworking = $Network.EnableAcceleratedNetworking
-}
-        if ($Network.EnableIPForwarding) {
-    $nicParams.EnableIPForwarding = $true
-}
+                Name                        = $Network.NICName
+                ResourceGroupName           = $ResourceGroupName
+                Location                    = $Location
+                SubnetId                    = $subnet.Id
+                PrivateIpAddress            = $Network.PrivateIP
+                EnableIPForwarding          = $Network.EnableIPForwarding
+                EnableAcceleratedNetworking = $Network.EnableAcceleratedNetworking
+            }
+
             if ($nsg) {
                 $nicParams.NetworkSecurityGroupId = $nsg.Id
             }
 
             $nic = New-AzNetworkInterface @nicParams -ErrorAction Stop
 
-            Write-LabLog "Network Interface created successfully." -Level SUCCESS
+            Write-LabLog "Network Interface '$($Network.NICName)' created successfully." -Level SUCCESS
         }
         catch {
-            Write-LabLog "Failed to create Network Interface '$NicName'." -Level ERROR
-            Write-LabLog $_ -Level ERROR
+            Write-LabLog "Failed to create Network Interface '$($Network.NICName)'." -Level ERROR
+            Write-LabLog $_.Exception.Message -Level ERROR
             throw
         }
     }
 }
 
-# ✅ FIXED: Verification only runs if not in WhatIf mode
+# Verification
 if (-not $WhatIfPreference) {
-    Write-LabLog "Verifying the Network Interface '$NicName'..." -Level INFO
-    $nic = Get-AzNetworkInterface -Name $NicName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+    $nic = Get-AzNetworkInterface -Name $Network.NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
     if ($nic) {
-        Write-LabLog "Network Interface '$NicName' verified successfully." -Level SUCCESS
+        Write-LabLog "Network Interface '$($Network.NICName)' verified successfully." -Level SUCCESS
     }
     else {
-        Write-LabLog "Failed to verify Network Interface '$NicName'." -Level ERROR
-        throw "Failed to verify Network Interface '$NicName'."
+        throw "Failed to verify Network Interface '$($Network.NICName)'."
     }
 }
 else {
@@ -116,11 +122,10 @@ else {
 
 # Deployment Summary
 Write-DeploymentSummary -Properties @{
-    "Resource Group"     = $ResourceGroupName
-    "Location"           = $Location
-    "Virtual Network"    = $VNetName
-    "Subnet"             = $SubnetName
-    "Network Interface"  = $NicName
-    "NSG"                = if ($nsg) { $Network.NSGName } else { "None" }
-    "Provisioning"       = if ($WhatIfPreference) { "WhatIf (Not Deployed)" } else { $nic.ProvisioningState }
+    "Role"              = $Role
+    "Network Interface" = $Network.NICName
+    "Private IP"        = $Network.PrivateIP
+    "Subnet"            = $Network.SubnetName
+    "Virtual Network"   = $VNetName
+    "Provisioning"      = if ($WhatIfPreference) { "WhatIf" } else { $nic.ProvisioningState }
 }

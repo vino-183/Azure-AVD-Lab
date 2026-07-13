@@ -1,158 +1,153 @@
 <#
- .SYNOPSIS
-    Creates a new Azure virtual machine in Azure Virtual Desktop (AVD) environment.
- .DESCRIPTION
-    This script creates a new Virtual Machine.
-    It configures the VM using the specified parameters, including name, size, image, OS disk, and network settings.
- .AUTHOR
+.SYNOPSIS
+    Create a new Azure Virtual Machine for the selected lab role.
+
+.DESCRIPTION
+    Builds a VM configuration using catalog-driven values (VM, Image, OSDisk, Network, Tags).
+    Deploys the VM using the standard Azure PowerShell pipeline.
+
+.AUTHOR
     Vinodh
- .DATE
-    2026-07-09
- .NOTES
-    Part of the Azure-AVD-Lab project. Assumes prerequisites (RG, VNet, Subnet, NIC, Storage) already exist.
- .EXAMPLE
-    .\06-New-VirtualMachine.ps1 -WhatIf
+
+.DATE
+    2026-07-13
 #>
 
-#CmdletBinding(SupportsShouldProcess)
-[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
-param()
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [Parameter(Mandatory)]
+    [string]$Role
+)
 
 # Import common modules
 . "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
-# Load the Session Host profile from the VM Catalog
-$VMProfile = $VMCatalog.SessionHost
+# Validate role
+if (-not $VMCatalog.ContainsKey($Role)) {
+    throw "Unknown VM Role '$Role'."
+}
 
-$VM      = $VMProfile.VM
-$Network = $VMProfile.Network
-$Image   = $VMProfile.Image
-$OSDisk  = $VMProfile.OSDisk
-$Tags    = $VMProfile.Tags
+# Retrieve profile
+$VMProfile = $VMCatalog[$Role]
+$VM        = $VMProfile.VM
+$Image     = $VMProfile.Image
+$OSDisk    = $VMProfile.OSDisk
+$Network   = $VMProfile.Network
+$Tags      = $VMProfile.Tags
 
 # Validate prerequisites
+Write-LabLog "Validating prerequisites..." -Level INFO
 if (-not (Test-LabPrerequisites)) {
     throw "Prerequisite validation failed."
 }
 
-# Resource group validation
-if (-not (Test-ResourceGroupIfExists -ResourceGroupName $ResourceGroupName)) {
-    throw "Resource group validation failed."
+# Check whether the VM already exists
+Write-LabLog "Checking if Virtual Machine '$($VM.Name)' exists..." -Level INFO
+$existingVm = Get-AzVM -Name $VM.Name -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+
+if ($existingVm) {
+    Write-LabLog "Virtual Machine '$($VM.Name)' already exists. Skipping deployment." -Level SUCCESS
 }
+else {
+    if ($PSCmdlet.ShouldProcess($VM.Name, "Create Virtual Machine")) {
+        try {
+            Write-LabLog "Creating Virtual Machine '$($VM.Name)'..." -Level INFO
 
-# VNet validation
-if (-not (Test-VNetIfExists -VNetName $VNetName -ResourceGroupName $ResourceGroupName)) {
-    throw "Virtual network validation failed."
-}
+            # Resolve VM size dynamically (skip in WhatIf for speed)
+            if (-not $WhatIfPreference) {
+                $VM.Size = Get-LabVmSku -Location $Location -vCPU $VM.vCPU -MemoryGB $VM.MemoryGB -RequirePremiumStorage:$VM.RequirePremiumStorage
+            }
+            else {
+                Write-LabLog "WhatIf mode detected. Skipping dynamic SKU lookup." -Level INFO
+            }
 
-$vnet = Get-AzVirtualNetwork -Name $VNetName -ResourceGroupName $ResourceGroupName
+            # Prompt for credentials (skip in WhatIf)
+            if (-not $WhatIfPreference) {
+                $AdminCredential = Get-LabCredential -Message "Enter credentials for '$($VM.Name)'"
+            }
 
-# Subnet validation
-$vnet = Get-AzVirtualNetwork -Name $VNetName -ResourceGroupName $ResourceGroupName
-if (-not (Test-SubnetIfExists -VirtualNetwork $vnet -SubnetName $SubnetName)) {
-    throw "Subnet validation failed."
-}
+            # Resolve NIC (skip in WhatIf)
+            if (-not $WhatIfPreference) {
+                $nic = Get-AzNetworkInterface -Name $Network.NICName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
+            }
 
-# NSG validation
-if ($NSGName) {
-    if (-not (Test-NSGIfExists -NSGName $NSGName -ResourceGroupName $ResourceGroupName)) {
-        throw "NSG validation failed."
+            # Build VM config
+            $vmConfig = New-AzVMConfig -VMName $VM.Name -VMSize $VM.Size
+
+            if (-not $WhatIfPreference) {
+                $vmConfig = Set-AzVMOperatingSystem `
+                    -VM $vmConfig `
+                    -Windows `
+                    -ComputerName $VM.ComputerName `
+                    -Credential $AdminCredential `
+                    -ProvisionVMAgent `
+                    -EnableAutoUpdate
+            }
+
+            $vmConfig = Set-AzVMSourceImage `
+                -VM $vmConfig `
+                -PublisherName $Image.Publisher `
+                -Offer $Image.Offer `
+                -Skus $Image.Sku `
+                -Version $Image.Version
+
+            $vmConfig = Set-AzVMOSDisk `
+                -VM $vmConfig `
+                -Name $OSDisk.Name `
+                -CreateOption FromImage `
+                -StorageAccountType $OSDisk.SKU `
+                -DiskSizeInGB $OSDisk.SizeGB
+
+            if (-not $WhatIfPreference) {
+                $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
+            }
+
+            # Disable boot diagnostics for now
+            $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Disable
+
+            # Deploy VM
+            $vm = New-AzVM `
+                -ResourceGroupName $ResourceGroupName `
+                -Location $Location `
+                -VM $vmConfig `
+                -Tag $Tags `
+                -ErrorAction Stop
+
+            Write-LabLog "Virtual Machine '$($VM.Name)' created successfully." -Level SUCCESS
+        }
+        catch {
+            Write-LabLog "Failed to create Virtual Machine '$($VM.Name)'." -Level ERROR
+            Write-LabLog $_.Exception.Message -Level ERROR
+            throw
+        }
     }
 }
 
-# Storage validation
-if ($StorageAccountName) {
-    if (-not (Test-StorageAccountIfExists -StorageAccountName $StorageAccountName -ResourceGroupName $ResourceGroupName)) {
-        throw "Storage account validation failed."
-    }
-}
-
-# NIC validation
-if ($NetworkInterfaceName) {
-    if (-not (Test-NetworkInterfaceIfExists -NetworkInterfaceName $NetworkInterfaceName -ResourceGroupName $ResourceGroupName)) {
-        throw "NIC validation failed."
-    }
-}
-
-# VM existence check
-if (Get-AzVM -Name $VM.Name -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue) {
-    Write-LabLog "VM '$VM.Name' already exists." -Level WARNING
-
-throw "VM already exists."
-}
-
-# Prompt for credentials
-if ($PSCmdlet.ShouldProcess($VM.Name, "Create Virtual Machine")) {
-# Determine the best available VM SKU
-Write-LabLog "Searching for an available VM SKU..." -Level Info
-
-$VM.Size = Get-LabVmSku `
-    -Location $Location `
-    -vCPU 2 `
-    -MemoryGB 4 `
-    -RequirePremiumStorage
-
-Write-LabLog "Using VM Size '$VM.Size'." -Level Info
-
-# Prompt for credentials only after a valid SKU is found
-$AdminCredential = Get-LabCredential -Message "Enter credentials for the new Virtual Machine '$VM.Name'"
-
-# Build VM configuration
-$vmConfig = New-AzVMConfig -VMName $VM.Name -VMSize $VM.Size
-$vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $ComputerName -Credential $AdminCredential -ProvisionVMAgent -EnableAutoUpdate
-$vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName $Image.Publisher -Offer $Image.Offer -Skus $Image.SKU -Version $Image.Version
-$vmConfig = Set-AzVMOSDisk -VM $vmConfig -Name $OSDiskName -CreateOption FromImage -StorageAccountType $OSDiskType
-
-# Disable Boot Diagnostics to prevent Azure from creating a new stbootdiagxxxxx storage account for every VM
-$vmConfig = Set-AzVMBootDiagnostic `
-    -VM $vmConfig `
-    -Disable
-
-# Attach NIC
-$nic = Get-AzNetworkInterface -Name $NetworkInterfaceName -ResourceGroupName $ResourceGroupName
-$vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
-
-# Create VM
-
-Write-LabLog "Creating Virtual Machine '$VM.Name'..."
-
-New-AzVM -ResourceGroupName $ResourceGroupName -Location $Location -VM $vmConfig -ErrorAction Stop
-
-Write-LabLog "VM '$VM.Name' created successfully." -Level SUCCESS
-}
-
-else
-{
-    Write-LabLog "WhatIf mode detected. Skipping actual VM creation." -Level Info
-}
-
-# Verification only if not WhatIf
+# Verification
 if (-not $WhatIfPreference) {
-    $vm = Get-AzVM -Name $VM.Name -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
-    if ($vm -and $vm.ProvisioningState -eq "Succeeded") {
-        Write-LabLog "VM '$VM.Name' verified successfully. Provisioning state is Succeeded." -Level SUCCESS
-    }
-    else {
-        Write-LabLog "VM '$VM.Name' verification failed. Provisioning state is $($vm.ProvisioningState)." -Level ERROR
-        throw "VM creation failed or provisioning did not succeed."
-    }
+    $vm = Get-AzVM -Name $VM.Name -ResourceGroupName $ResourceGroupName -ErrorAction Stop
+    Write-LabLog "Virtual Machine '$($VM.Name)' verified successfully." -Level SUCCESS
 }
 else {
     Write-LabLog "WhatIf mode detected. Skipping deployment verification." -Level INFO
 }
 
-
 # Deployment Summary
-$summary = @{
-    "VM Name" = $VM.Name
-    "Resource Group" = $ResourceGroupName
-    "Location" = $Location
-    "VM Size" = $VM.Size
-    "OS Disk Type" = $OSDiskType
-    "Image" = "$Image.Publisher $Image.Offer $Image.SKU $Image.Version"
-    "NIC Name" = $NetworkInterfaceName
-    "Subnet Name" = $SubnetName
-    "VNet Name" = $VNetName
+Write-DeploymentSummary -Properties @{
+    "Role"        = $Role
+    "VM Name"     = $VM.Name
+    "Size"        = $VM.Size
+    "Image"       = "$($Image.Publisher) $($Image.Offer) $($Image.Sku) $($Image.Version)"
+    "OS Disk"     = "$($OSDisk.Name) ($($OSDisk.SizeGB) GB, $($OSDisk.SKU))"
+    "NIC"         = $Network.NICName
+    "Tags"        = ($Tags.Keys | ForEach-Object { "$_=$($Tags[$_])" }) -join "; "
+    "Provisioning" = if ($WhatIfPreference) { "WhatIf" } else { $vm.ProvisioningState }
 }
 
-Write-DeploymentSummary -Properties $summary
+# Return structured result
+return [PSCustomObject]@{
+    Role        = $Role
+    DisplayName = $VMProfile.DisplayName
+    VMName      = $VM.Name
+    Status      = "Succeeded"
+}
