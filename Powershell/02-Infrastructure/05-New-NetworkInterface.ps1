@@ -14,6 +14,7 @@ param()
 # Load the Session Host profile from the VM Catalog
 $VMProfile = $VMCatalog.SessionHost
 $Network   = $VMProfile.Network
+$NicName = $NicName
 
 # validate prerequisites
 Write-LabLog "Validating prerequisites..." -Level INFO
@@ -60,18 +61,18 @@ if ($Network.NSGName) {
 }
 
 # check whether the network interface already exists
-Write-LabLog "Checking if Network Interface '$Network.NICName' exists in Resource Group '$ResourceGroupName'..." -Level INFO
-$nic = Get-AzNetworkInterface -Name $Network.NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+Write-LabLog "Checking if Network Interface '$NicName' exists in Resource Group '$ResourceGroupName'..." -Level INFO
+$nic = Get-AzNetworkInterface -Name $NicName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 if ($nic) {
-    Write-LabLog "Network Interface '$Network.NICName' already exists. Skipping deployment." -Level SUCCESS
+    Write-LabLog "Network Interface '$NicName' already exists. Skipping deployment." -Level SUCCESS
 }
 else {
-    if ($PSCmdlet.ShouldProcess($Network.NICName, "Create Network Interface")) {
+    if ($PSCmdlet.ShouldProcess($NicName, "Create Network Interface")) {
         try {
-            Write-LabLog "Creating Network Interface '$Network.NICName'..." -Level INFO
+            Write-LabLog "Creating Network Interface '$NicName'..." -Level INFO
 
             $nicParams = @{
-    Name                   = $Network.NICName
+    Name                   = $NicName
     ResourceGroupName      = $ResourceGroupName
     Location               = $Location
     SubnetId               = $subnet.Id
@@ -90,7 +91,7 @@ else {
             Write-LabLog "Network Interface created successfully." -Level SUCCESS
         }
         catch {
-            Write-LabLog "Failed to create Network Interface '$Network.NICName'." -Level ERROR
+            Write-LabLog "Failed to create Network Interface '$NicName'." -Level ERROR
             Write-LabLog $_ -Level ERROR
             throw
         }
@@ -99,14 +100,14 @@ else {
 
 # ✅ FIXED: Verification only runs if not in WhatIf mode
 if (-not $WhatIfPreference) {
-    Write-LabLog "Verifying the Network Interface '$Network.NICName'..." -Level INFO
-    $nic = Get-AzNetworkInterface -Name $Network.NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+    Write-LabLog "Verifying the Network Interface '$NicName'..." -Level INFO
+    $nic = Get-AzNetworkInterface -Name $NicName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
     if ($nic) {
-        Write-LabLog "Network Interface '$Network.NICName' verified successfully." -Level SUCCESS
+        Write-LabLog "Network Interface '$NicName' verified successfully." -Level SUCCESS
     }
     else {
-        Write-LabLog "Failed to verify Network Interface '$Network.NICName'." -Level ERROR
-        throw "Failed to verify Network Interface '$Network.NICName'."
+        Write-LabLog "Failed to verify Network Interface '$NicName'." -Level ERROR
+        throw "Failed to verify Network Interface '$NicName'."
     }
 }
 else {
@@ -119,7 +120,7 @@ Write-DeploymentSummary -Properties @{
     "Location"           = $Location
     "Virtual Network"    = $VNetName
     "Subnet"             = $SubnetName
-    "Network Interface"  = $Network.NICName
+    "Network Interface"  = $NicName
     "NSG"                = if ($nsg) { $Network.NSGName } else { "None" }
     "Provisioning"       = if ($WhatIfPreference) { "WhatIf (Not Deployed)" } else { $nic.ProvisioningState }
 }

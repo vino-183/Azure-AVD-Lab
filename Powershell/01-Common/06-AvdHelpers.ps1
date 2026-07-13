@@ -16,11 +16,6 @@
             - Return values for install functions
 #>
 
-. "$PSScriptRoot\..\Common\00-FrameworkRequirements.ps1"
-. "$PSScriptRoot\..\Common\01-CommonVariables.ps1"
-. "$PSScriptRoot\..\Common\03-AzureHelpers.ps1"
-. "$PSScriptRoot\..\Common\04-VM-Variables.ps1"
-
 #---------------------------------------
 # Minimal AVD Helpers
 #---------------------------------------

@@ -8,6 +8,8 @@ $VMCatalog = @{
             Name         = "vm-avdlab-sh01"
             ComputerName = "AVDSH01"
             Size         = "Standard_D2alds_v7"
+            vCPU = 2
+            MemoryGB = 4
         }
 
         Network = @{

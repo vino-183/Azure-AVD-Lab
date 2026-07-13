@@ -21,6 +21,15 @@ param()
 # Import common modules
 . "$PSScriptRoot\..\01-Common\Import-Common.ps1"
 
+# Load the Session Host profile from the VM Catalog
+$VMProfile = $VMCatalog.SessionHost
+
+$VM      = $VMProfile.VM
+$Network = $VMProfile.Network
+$Image   = $VMProfile.Image
+$OSDisk  = $VMProfile.OSDisk
+$Tags    = $VMProfile.Tags
+
 # Validate prerequisites
 if (-not (Test-LabPrerequisites)) {
     throw "Prerequisite validation failed."
@@ -66,32 +75,32 @@ if ($NetworkInterfaceName) {
 }
 
 # VM existence check
-if (Get-AzVM -Name $VMName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue) {
-    Write-LabLog "VM '$VMName' already exists." -Level WARNING
+if (Get-AzVM -Name $VM.Name -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue) {
+    Write-LabLog "VM '$VM.Name' already exists." -Level WARNING
 
 throw "VM already exists."
 }
 
 # Prompt for credentials
-if ($PSCmdlet.ShouldProcess($VMName, "Create Virtual Machine")) {
+if ($PSCmdlet.ShouldProcess($VM.Name, "Create Virtual Machine")) {
 # Determine the best available VM SKU
 Write-LabLog "Searching for an available VM SKU..." -Level Info
 
-$VMSize = Get-LabVmSku `
+$VM.Size = Get-LabVmSku `
     -Location $Location `
     -vCPU 2 `
     -MemoryGB 4 `
     -RequirePremiumStorage
 
-Write-LabLog "Using VM Size '$VMSize'." -Level Info
+Write-LabLog "Using VM Size '$VM.Size'." -Level Info
 
 # Prompt for credentials only after a valid SKU is found
-$AdminCredential = Get-LabCredential -Message "Enter credentials for the new Virtual Machine '$VMName'"
+$AdminCredential = Get-LabCredential -Message "Enter credentials for the new Virtual Machine '$VM.Name'"
 
 # Build VM configuration
-$vmConfig = New-AzVMConfig -VMName $VMName -VMSize $VMSize
+$vmConfig = New-AzVMConfig -VMName $VM.Name -VMSize $VM.Size
 $vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $ComputerName -Credential $AdminCredential -ProvisionVMAgent -EnableAutoUpdate
-$vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName $ImagePublisher -Offer $ImageOffer -Skus $ImageSku -Version $ImageVersion
+$vmConfig = Set-AzVMSourceImage -VM $vmConfig -PublisherName $Image.Publisher -Offer $Image.Offer -Skus $Image.SKU -Version $Image.Version
 $vmConfig = Set-AzVMOSDisk -VM $vmConfig -Name $OSDiskName -CreateOption FromImage -StorageAccountType $OSDiskType
 
 # Disable Boot Diagnostics to prevent Azure from creating a new stbootdiagxxxxx storage account for every VM
@@ -105,11 +114,11 @@ $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
 
 # Create VM
 
-Write-LabLog "Creating Virtual Machine '$VMName'..."
+Write-LabLog "Creating Virtual Machine '$VM.Name'..."
 
 New-AzVM -ResourceGroupName $ResourceGroupName -Location $Location -VM $vmConfig -ErrorAction Stop
 
-Write-LabLog "VM '$VMName' created successfully." -Level SUCCESS
+Write-LabLog "VM '$VM.Name' created successfully." -Level SUCCESS
 }
 
 else
@@ -119,12 +128,12 @@ else
 
 # Verification only if not WhatIf
 if (-not $WhatIfPreference) {
-    $vm = Get-AzVM -Name $VMName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+    $vm = Get-AzVM -Name $VM.Name -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
     if ($vm -and $vm.ProvisioningState -eq "Succeeded") {
-        Write-LabLog "VM '$VMName' verified successfully. Provisioning state is Succeeded." -Level SUCCESS
+        Write-LabLog "VM '$VM.Name' verified successfully. Provisioning state is Succeeded." -Level SUCCESS
     }
     else {
-        Write-LabLog "VM '$VMName' verification failed. Provisioning state is $($vm.ProvisioningState)." -Level ERROR
+        Write-LabLog "VM '$VM.Name' verification failed. Provisioning state is $($vm.ProvisioningState)." -Level ERROR
         throw "VM creation failed or provisioning did not succeed."
     }
 }
@@ -135,12 +144,12 @@ else {
 
 # Deployment Summary
 $summary = @{
-    "VM Name" = $VMName
+    "VM Name" = $VM.Name
     "Resource Group" = $ResourceGroupName
     "Location" = $Location
-    "VM Size" = $VMSize
+    "VM Size" = $VM.Size
     "OS Disk Type" = $OSDiskType
-    "Image" = "$ImagePublisher $ImageOffer $ImageSku $ImageVersion"
+    "Image" = "$Image.Publisher $Image.Offer $Image.SKU $Image.Version"
     "NIC Name" = $NetworkInterfaceName
     "Subnet Name" = $SubnetName
     "VNet Name" = $VNetName
