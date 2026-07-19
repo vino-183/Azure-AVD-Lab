@@ -3,7 +3,7 @@
 # Redundancy
 # Private Endpoint names
 
-$StorageAccountName = "stavdlabeus001"
+$StorageAccountName = "stavdlabeus002"
 
 $StorageSku = "Standard_LRS"
 

@@ -24,11 +24,15 @@ param(
 )
 
 # Import modules
-. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
-
-# Apply defaults if parameters not provided
-if (-not $ResourceGroupName) { $ResourceGroupName = $Global:ResourceGroupName }
-if (-not $HostPoolName)      { $HostPoolName      = $Global:HostPoolName }
+# Import common helpers
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\00-FrameworkRequirements.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\00-VMCatalog.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\01-CommonVariables.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\02-NetworkVariables.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\04-VM-Variables.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\05-StorageVariables.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\06-AvdHelpers.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\03-AzureHelpers.ps1"
 
 try {
     Write-LabLog "Validating prerequisites..." -Level Info

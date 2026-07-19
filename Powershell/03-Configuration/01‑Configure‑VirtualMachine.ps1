@@ -1,88 +1,192 @@
-<#
-.SYNOPSIS
-    Configure a Virtual Machine for the selected lab role.
+function Configure-DomainController {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)]
+        [string]$VMName,
 
-.DESCRIPTION
-    Applies role-specific configuration steps after VM deployment.
-    Keeps deployment and configuration concerns separate.
+        [Parameter(Mandatory)]
+        [pscredential]$SafeModeAdministratorCredential,
 
-.AUTHOR
-    Vinodh
+        [Parameter(Mandatory)]
+        [string]$DomainName,
 
-.DATE
-    2026-07-13
-#>
+        [Parameter(Mandatory)]
+        [string]$NetBIOSName
+    )
 
-[CmdletBinding(SupportsShouldProcess)]
-param(
-    [Parameter(Mandatory)]
-    [ValidateSet("DomainController","SessionHost","SQLServer","WebServer")]
-    [string]$Role
-)
+    try {
+        Write-LabLog "Starting Domain Controller configuration for '$VMName'..." -Level INFO
 
-# Import common modules
-. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
-
-# Retrieve profile
-$VMProfile = $VMCatalog[$Role]
-
-try {
-    Write-LabLog "Role selected : $Role" -Level INFO
-    Write-LabLog "Starting configuration for '$($VMProfile.DisplayName)'..." -Level INFO
-
-    switch ($Role) {
-        "DomainController" {
-            Configure-DomainController
-            Write-LabLog "Domain Controller configuration completed." -Level SUCCESS
+        #region Check Current Role
+        Write-LabLog "Checking current server role..." -Level INFO
+        $cs = Get-CimInstance Win32_ComputerSystem
+        if ($cs.DomainRole -ge 4) {
+            Write-LabLog "Server is already a Domain Controller." -Level INFO
+            return [PSCustomObject]@{
+                Role        = "DomainController"
+                VMName      = $VMName
+                Stage       = "Configuration"
+                Status      = "AlreadyDC"
+                DomainName  = $DomainName
+                NetBIOSName = $NetBIOSName
+                Timestamp   = Get-Date
+            }
         }
+        #endregion
 
-        "SessionHost" {
-            Configure-SessionHost
-            Write-LabLog "Session Host configuration completed." -Level SUCCESS
+        #region Install ADDS
+        Write-LabLog "Checking ADDS installation..." -Level INFO
+        $feature = Get-WindowsFeature AD-Domain-Services
+        if (-not $feature.Installed) {
+            if ($PSCmdlet.ShouldProcess($VMName, "Install Active Directory Domain Services")) {
+                Write-LabLog "Installing ADDS feature..." -Level INFO
+                Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools -ErrorAction Stop
+                $feature = Get-WindowsFeature AD-Domain-Services
+                if (-not $feature.Installed) {
+                    throw "ADDS installation verification failed."
+                }
+                Write-LabLog "ADDS feature installed and verified." -Level SUCCESS
+            }
         }
+        else {
+            Write-LabLog "ADDS already installed." -Level INFO
+        }
+        #endregion
 
-        "SQLServer" {
-            Configure-SqlServer
-            Write-LabLog "SQL Server configuration completed." -Level SUCCESS
-        }
+        #region Promote Server
+        Import-Module ADDSDeployment -ErrorAction Stop
+        if ($PSCmdlet.ShouldProcess($VMName, "Promote to Domain Controller")) {
+            Write-LabLog "Starting forest creation..." -Level INFO
+            Install-ADDSForest `
+                -DomainName $DomainName `
+                -DomainNetbiosName $NetBIOSName `
+                -SafeModeAdministratorPassword $SafeModeAdministratorCredential.Password `
+                -Force `
+                -NoRebootOnCompletion
+            Write-LabLog "Forest creation completed. Server restart required." -Level WARN
 
-        "WebServer" {
-            Configure-WebServer
-            Write-LabLog "Web Server configuration completed." -Level SUCCESS
+            return [PSCustomObject]@{
+                Role        = "DomainController"
+                VMName      = $VMName
+                Stage       = "Configuration"
+                Status      = "RestartRequired"
+                DomainName  = $DomainName
+                NetBIOSName = $NetBIOSName
+                Timestamp   = Get-Date
+            }
         }
+        #endregion
     }
+    catch {
+        Write-LabLog "Domain Controller configuration failed: $_" -Level ERROR
 
-    Write-LabLog "Configuration completed for '$($VMProfile.DisplayName)'." -Level SUCCESS
+        Write-DeploymentSummary -Properties @{
+            Role        = "DomainController"
+            VMName      = $VMName
+            Stage       = "Configuration"
+            Status      = "Failed"
+            DomainName  = $DomainName
+            NetBIOSName = $NetBIOSName
+            Timestamp   = Get-Date
+        }
 
-    Write-DeploymentSummary -Properties @{
-        Role        = $Role
-        DisplayName = $VMProfile.DisplayName
-        Stage       = "Configuration"
-        Status      = "Succeeded"
-        Timestamp   = (Get-Date)
-        RoleType    = $VMProfile.Role
-    }
-
-    return [PSCustomObject]@{
-        Role        = $Role
-        DisplayName = $VMProfile.DisplayName
-        Stage       = "Configuration"
-        Status      = "Succeeded"
-        Timestamp   = Get-Date
-        RoleType    = $VMProfile.Role
+        throw
     }
 }
-catch {
-    Write-LabLog $_.Exception.Message -Level ERROR
+function Configure-DomainJoin {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)]
+        [string]$VMName,
 
-    Write-DeploymentSummary -Properties @{
-        Role        = $Role
-        DisplayName = $VMProfile.DisplayName
-        Stage       = "Configuration"
-        Status      = "Failed"
-        Timestamp   = (Get-Date)
-        RoleType    = $VMProfile.Role
+        [Parameter(Mandatory)]
+        [string]$DomainName,
+
+        [Parameter(Mandatory)]
+        [pscredential]$DomainCredential
+    )
+
+    try {
+        Write-LabLog "Starting domain join configuration for '$VMName'..." -Level INFO
+
+        #region Check Current Domain
+        Write-LabLog "Checking current domain membership..." -Level INFO
+        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+        if ($cs.PartOfDomain -and $cs.Domain -eq $DomainName) {
+            Write-LabLog "Server already joined to '$DomainName'." -Level INFO
+
+            Write-DeploymentSummary -Properties @{
+                Role       = "DomainJoin"
+                VMName     = $VMName
+                Stage      = "Configuration"
+                Status     = "AlreadyJoined"
+                DomainName = $DomainName
+                Timestamp  = Get-Date
+            }
+
+            return [PSCustomObject]@{
+                Role       = "DomainJoin"
+                VMName     = $VMName
+                Stage      = "Configuration"
+                Status     = "AlreadyJoined"
+                DomainName = $DomainName
+                Timestamp  = Get-Date
+            }
+        }
+        #endregion
+
+        #region Test Domain Reachability
+        Write-LabLog "Testing reachability of domain '$DomainName'..." -Level INFO
+        if (-not (Test-Connection -ComputerName $DomainName -Count 1 -Quiet)) {
+            throw "Domain '$DomainName' is not reachable."
+        }
+        Write-LabLog "Domain '$DomainName' is reachable." -Level SUCCESS
+        #endregion
+
+        #region Join Computer
+        if ($PSCmdlet.ShouldProcess($VMName, "Join domain '$DomainName'")) {
+            Write-LabLog "Joining computer to domain '$DomainName'..." -Level INFO
+            Add-Computer `
+                -DomainName $DomainName `
+                -Credential $DomainCredential `
+                -Force `
+                -ErrorAction Stop
+
+            Write-LabLog "Domain join initiated. Restart required." -Level WARN
+
+            Write-DeploymentSummary -Properties @{
+                Role       = "DomainJoin"
+                VMName     = $VMName
+                Stage      = "Configuration"
+                Status     = "RestartRequired"
+                DomainName = $DomainName
+                Timestamp  = Get-Date
+            }
+
+            return [PSCustomObject]@{
+                Role       = "DomainJoin"
+                VMName     = $VMName
+                Stage      = "Configuration"
+                Status     = "RestartRequired"
+                DomainName = $DomainName
+                Timestamp  = Get-Date
+            }
+        }
+        #endregion
     }
+    catch {
+        Write-LabLog "Domain join configuration failed: $_" -Level ERROR
 
-    throw
+        Write-DeploymentSummary -Properties @{
+            Role       = "DomainJoin"
+            VMName     = $VMName
+            Stage      = "Configuration"
+            Status     = "Failed"
+            DomainName = $DomainName
+            Timestamp  = Get-Date
+        }
+
+        throw
+    }
 }
+

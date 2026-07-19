@@ -15,8 +15,6 @@
             - Grouped helpers by category
 #>
 
-. "$PSScriptRoot\00-FrameworkRequirements.ps1"
-
 #---------------------------------------
 # Logging Helpers
 #---------------------------------------
@@ -195,48 +193,43 @@ function Test-NetworkInterfaceIfExists { param([string]$NetworkInterfaceName,[st
 function Get-LabVmSku {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$Location,
+        [Parameter(Mandatory)]
+        [string]$Location,
+
         [int]$vCPU = 2,
         [int]$MemoryGB = 4,
         [switch]$RequirePremiumStorage
     )
 
-    Write-LabLog "Searching available VM SKUs in '$Location'..." -Level INFO
+    Write-LabLog "Searching VM SKUs in '$Location'..." -Level INFO
 
-    # Step 1 – Retrieve all SKUs
-    $Skus = Get-AzComputeResourceSku
-    Write-LabLog "Total SKUs returned: $($Skus.Count)" -Level INFO
+    # Step 1 – Retrieve SKUs
+    $Skus = Get-AzComputeResourceSku | Where-Object { $_.ResourceType -eq "virtualMachines" }
 
-    # Step 2 – Filter to virtual machines
-    $Skus = $Skus | Where-Object { $_.ResourceType -eq "virtualMachines" }
-    Write-LabLog "Virtual Machine SKUs: $($Skus.Count)" -Level INFO
-
-    # Step 3 – Filter by location
+    # Step 2 – Filter by location
     $NormalizedLocation = ($Location -replace '\s','').ToLower()
     $Skus = $Skus | Where-Object {
         ($_.Locations | ForEach-Object { ($_ -replace '\s','').ToLower() }) -contains $NormalizedLocation
     }
-    Write-LabLog "$Location SKUs: $($Skus.Count)" -Level INFO
 
-    # Step 4 – Filter x64 architecture
-    $Skus = $Skus | Where-Object {
-        ($_.Capabilities | Where-Object Name -eq "CpuArchitectureType").Value -contains "x64"
-    }
-    Write-LabLog "x64 SKUs: $($Skus.Count)" -Level INFO
-
-    # Step 5 – Remove restricted SKUs
+    # Step 3 – Exclude restricted SKUs
     $Skus = $Skus | Where-Object { $_.Restrictions.Count -eq 0 }
-    Write-LabLog "Unrestricted SKUs: $($Skus.Count)" -Level INFO
 
-    # Step 6 – Candidate selection
+    # Step 4 – Exclude ARM SKUs
+    $Skus = $Skus | Where-Object {
+        ($_.Capabilities | Where-Object Name -eq "CpuArchitectureType").Value -notmatch "Arm"
+    }
+
+    # Step 5 – Candidate selection
     $Candidates = foreach ($Sku in $Skus) {
-        $Cpu       = ($Sku.Capabilities | Where-Object Name -eq "vCPUs").Value
-        $Memory    = ($Sku.Capabilities | Where-Object Name -eq "MemoryGB").Value
-        $PremiumIO = ($Sku.Capabilities | Where-Object Name -eq "PremiumIO").Value
+        $Caps = @{}
+        foreach ($Cap in $Sku.Capabilities) { $Caps[$Cap.Name] = $Cap.Value }
+
+        $Cpu       = $Caps["vCPUs"]
+        $Memory    = $Caps["MemoryGB"]
+        $PremiumIO = $Caps["PremiumIO"]
 
         if (-not $Cpu -or -not $Memory) { continue }
-        if ($RequirePremiumStorage -and $PremiumIO -ne "True") { continue }
-
         if ([int]$Cpu -eq $vCPU -and [double]$Memory -ge $MemoryGB) {
             [PSCustomObject]@{
                 Name      = $Sku.Name
@@ -246,31 +239,192 @@ function Get-LabVmSku {
         }
     }
 
-    Write-LabLog "Candidate SKUs after vCPU/Memory filter: $($Candidates.Count)" -Level INFO
-
     if (-not $Candidates) {
         throw "No suitable VM SKU found in '$Location'."
     }
 
-    # Step 7 – Rank preferred VM families
+    # Step 6 – Prefer Premium IO if requested
+    if ($RequirePremiumStorage) {
+        $PremiumCandidates = $Candidates | Where-Object { $_.PremiumIO -eq "True" }
+        if ($PremiumCandidates) {
+            $Candidates = $PremiumCandidates
+        }
+    }
+
+    # Step 7 – Rank preferred families
     $FamilyOrder = @("Standard_D","Standard_B","Standard_E","Standard_F","Standard_A")
     foreach ($Family in $FamilyOrder) {
-        $Match = $Candidates |
-            Where-Object { $_.Name -like "$Family*" } |
-            Sort-Object MemoryGB |
-            Select-Object -First 1
+        $Match = $Candidates | Where-Object { $_.Name -like "$Family*" } |
+                 Sort-Object MemoryGB | Select-Object -First 1
         if ($Match) {
             Write-LabLog "Selected VM SKU: $($Match.Name)" -Level SUCCESS
             return $Match.Name
         }
     }
 
-    # Step 8 – Fallback if no preferred family matched
+    # Step 8 – Fallback
     $Selected = $Candidates | Sort-Object MemoryGB | Select-Object -First 1
     Write-LabLog "Selected VM SKU: $($Selected.Name)" -Level SUCCESS
     return $Selected.Name
 }
 
+
+function New-LabNetworkInterface {
+    [CmdletBinding()]
+    param(
+        [string]$Role,
+        [string]$ResourceGroupName,
+        [string]$Location,
+        [string]$SubnetId,
+        [string]$NicName = $null
+    )
+
+    if (-not $NicName) {
+        $NicName = "nic-$Role-$(Get-Random)"
+    }
+
+    Write-LabLog "Creating NIC '$NicName' for role '$Role'..." -Level INFO
+
+    Write-Host "----- New-LabNetworkInterface -----"
+Write-Host "Role              : '$Role'"
+Write-Host "ResourceGroupName : '$ResourceGroupName'"
+Write-Host "Location          : '$Location'"
+Write-Host "SubnetId          : '$SubnetId'"
+Write-Host "-----------------------------------"
+
+    $nic = New-AzNetworkInterface `
+        -Name $NicName `
+        -ResourceGroupName $ResourceGroupName `
+        -Location $Location `
+        -SubnetId $SubnetId `
+        -ErrorAction Stop
+
+    return $nic
+}
+
+function New-LabVirtualMachine {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)]
+        [string]$VMName,
+
+        [Parameter(Mandatory)]
+        [string]$VMSize,
+
+        [Parameter(Mandatory)]
+        [pscredential]$Credential,
+
+        [Parameter(Mandatory)]
+        [string]$ResourceGroupName,
+
+        [Parameter(Mandatory)]
+        [string]$Location,
+
+        [Parameter(Mandatory)]
+        [string]$VNetName,
+
+        [Parameter(Mandatory)]
+        [string]$SubnetName,
+
+        [Parameter(Mandatory)]
+        [string]$ImagePublisher,
+
+        [Parameter(Mandatory)]
+        [string]$ImageOffer,
+
+        [Parameter(Mandatory)]
+        [string]$ImageSku,
+
+        [string]$ImageVersion = "latest",
+
+        [string]$OSDiskSku = "Premium_LRS"
+    )
+
+    try {
+
+        Write-LabLog "Resolving subnet..." -Level INFO
+
+        $vnet = Get-AzVirtualNetwork `
+            -ResourceGroupName $ResourceGroupName `
+            -Name $VNetName `
+            -ErrorAction Stop
+
+        $subnet = $vnet.Subnets |
+            Where-Object Name -eq $SubnetName
+
+        if (-not $subnet) {
+            throw "Subnet '$SubnetName' not found."
+        }
+
+        Write-LabLog "Creating NIC..." -Level INFO
+
+        $nic = New-LabNetworkInterface `
+            -ResourceGroupName $ResourceGroupName `
+            -Location $Location `
+            -SubnetId $subnet.Id `
+            -NicName "nic-$VMName"
+
+        Write-LabLog "Building VM configuration..." -Level INFO
+
+        $vmConfig = New-AzVMConfig `
+            -VMName $VMName `
+            -VMSize $VMSize
+
+        $vmConfig = Set-AzVMOperatingSystem `
+            -VM $vmConfig `
+            -Windows `
+            -ComputerName $VMName `
+            -Credential $Credential `
+            -ProvisionVMAgent `
+            -EnableAutoUpdate
+
+        $vmConfig = Set-AzVMSourceImage `
+            -VM $vmConfig `
+            -PublisherName $ImagePublisher `
+            -Offer $ImageOffer `
+            -Skus $ImageSku `
+            -Version $ImageVersion
+
+        $vmConfig = Add-AzVMNetworkInterface `
+            -VM $vmConfig `
+            -Id $nic.Id
+
+        $vmConfig = Set-AzVMOSDisk `
+            -VM $vmConfig `
+            -CreateOption FromImage `
+            -StorageAccountType $OSDiskSku
+
+        if ($PSCmdlet.ShouldProcess($VMName, "Create Virtual Machine")) {
+
+          Write-LabLog "Azure Context:" -Level INFO
+
+$ctx = Get-AzContext
+
+Write-LabLog "Subscription : $($ctx.Subscription.Name)" -Level INFO
+Write-LabLog "SubscriptionId : $($ctx.Subscription.Id)" -Level INFO
+Write-LabLog "Tenant : $($ctx.Tenant.Id)" -Level INFO
+Write-LabLog "Account : $($ctx.Account.Id)" -Level INFO
+  
+            New-AzVM `
+                -ResourceGroupName $ResourceGroupName `
+                -Location $Location `
+                -VM $vmConfig `
+                -ErrorAction Stop
+        }
+
+        Write-LabLog "VM '$VMName' created successfully." -Level SUCCESS
+
+        return Get-AzVM `
+            -ResourceGroupName $ResourceGroupName `
+            -Name $VMName
+
+    }
+    catch {
+
+        Write-LabLog $_.Exception.Message -Level ERROR
+        throw
+    }
+}
 #---------------------------------------
 # End of AzureHelpers.ps1
 #---------------------------------------

@@ -2,7 +2,7 @@
 param ()
 
 # Import common modules
-. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\Import-Common.ps1"
 
 # Validate prerequisites
 if (-not (Test-LabPrerequisites)) {

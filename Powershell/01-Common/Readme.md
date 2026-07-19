@@ -1,0 +1,18 @@
+AzureHelpers contents:
+
+New-LabVirtualMachine
+New-LabVmResource
+New-LabNetworkInterface
+Remove-LabVirtualMachine
+Resize-LabVirtualMachine
+Start-LabVirtualMachine
+Stop-LabVirtualMachine
+
+AvdHelpers Contents:
+
+Get-LabRegistrationToken
+Install-LabAvdExtension
+Wait-LabAvdExtension
+Test-LabSessionHostRegistration
+Get-LabSessionHost
+Remove-LabSessionHost

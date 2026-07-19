@@ -1,14 +1,23 @@
+<#
+.SYNOPSIS
+    Deploys or verifies a Storage Account in the lab environment.
+
+.DESCRIPTION
+    Validates prerequisites, checks for existing resources, creates the storage account if needed,
+    and returns a deployment summary.
+#>
+
 [CmdletBinding(SupportsShouldProcess)]
 param()
 
 # Import common variables and helper functions
-. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\Import-Common.ps1"
 
 # ================================
 # Validate Prerequisites
 # ================================
 Test-LabPrerequisites
-Validate-AzContext   # <-- already logs success internally, no need to log again
+Validate-AzContext   # logs success internally
 
 # ================================
 # Deployment Body
@@ -19,12 +28,12 @@ try {
     # Verify Resource Group
     $resourceGroup = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction SilentlyContinue
     if (-not $resourceGroup) { throw "Resource Group '$ResourceGroupName' not found." }
-    Write-LabLog "Resource Group verified: $ResourceGroupName"
+    Write-LabLog "Resource Group verified: $ResourceGroupName" -Level INFO
 
     # Verify Existing Resource First
     $existingAccount = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName -Name $StorageAccountName -ErrorAction SilentlyContinue
     if ($existingAccount) {
-        Write-LabLog "Storage Account '$StorageAccountName' already exists."
+        Write-LabLog "Storage Account '$StorageAccountName' already exists." -Level INFO
         $finalAccount = $existingAccount
     }
     else {
@@ -34,8 +43,13 @@ try {
             throw "Storage Account name '$StorageAccountName' is not available. Reason: $($nameAvailable.Reason)"
         }
 
+        # Validate parameters
+        if (-not $StorageSku -or -not $StorageKind) {
+            throw "Storage account parameters are missing (Sku/Kind)."
+        }
+
         if ($PSCmdlet.ShouldProcess("Storage Account: $StorageAccountName", "Create")) {
-            Write-LabLog "Creating Storage Account '$StorageAccountName'..."
+            Write-LabLog "Creating Storage Account '$StorageAccountName'..." -Level INFO
             $storageAccount = New-AzStorageAccount -ResourceGroupName $ResourceGroupName `
                 -Name $StorageAccountName `
                 -Location $Location `
@@ -51,6 +65,8 @@ try {
     }
 
     if ($finalAccount) {
+        Write-LabLog "Storage Account '$($finalAccount.StorageAccountName)' deployment succeeded." -Level INFO
+
         Write-Output @"
 Deployment Summary
 ------------------
@@ -61,12 +77,15 @@ SKU             : $($finalAccount.Sku.Name)
 Kind            : $($finalAccount.Kind)
 Access Tier     : $($finalAccount.AccessTier)
 Provisioning    : $($finalAccount.ProvisioningState)
+Timestamp       : $(Get-Date)
 "@
     }
 
     return $finalAccount
 }
 catch {
-    Write-LabLog $_.Exception.Message -Level Error
+    Write-LabLog "Storage account deployment failed." -Level ERROR
+    Write-LabLog $_.Exception.Message -Level ERROR
+    Write-LabLog $_.ScriptStackTrace -Level ERROR
     throw
 }

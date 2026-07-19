@@ -1,10 +1,9 @@
 <#
 .SYNOPSIS
-    Create a new Azure Virtual Machine for the selected lab role.
+    Create a new Azure Virtual Machine.
 
 .DESCRIPTION
-    Builds a VM configuration using catalog-driven values (VM, Image, OSDisk, Network, Tags).
-    Deploys the VM using the standard Azure PowerShell pipeline.
+    Builds a virtual machine using the current configuration loaded from the lab variables.
 
 .AUTHOR
     Vinodh
@@ -14,26 +13,10 @@
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
-param(
-    [Parameter(Mandatory)]
-    [string]$Role
-)
+param()
 
 # Import common modules
-. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
-
-# Validate role
-if (-not $VMCatalog.ContainsKey($Role)) {
-    throw "Unknown VM Role '$Role'."
-}
-
-# Retrieve profile
-$VMProfile = $VMCatalog[$Role]
-$VM        = $VMProfile.VM
-$Image     = $VMProfile.Image
-$OSDisk    = $VMProfile.OSDisk
-$Network   = $VMProfile.Network
-$Tags      = $VMProfile.Tags
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\Import-Common.ps1"
 
 # Validate prerequisites
 Write-LabLog "Validating prerequisites..." -Level INFO
@@ -42,16 +25,16 @@ if (-not (Test-LabPrerequisites)) {
 }
 
 # Check whether the VM already exists
-Write-LabLog "Checking if Virtual Machine '$($VM.Name)' exists..." -Level INFO
-$existingVm = Get-AzVM -Name $VM.Name -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+Write-LabLog "Checking if Virtual Machine '$($VMName)' exists..." -Level INFO
+$existingVm = Get-AzVM -Name $VMName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 
 if ($existingVm) {
-    Write-LabLog "Virtual Machine '$($VM.Name)' already exists. Skipping deployment." -Level SUCCESS
+    Write-LabLog "Virtual Machine '$($VMName)' already exists. Skipping deployment." -Level SUCCESS
 }
 else {
-    if ($PSCmdlet.ShouldProcess($VM.Name, "Create Virtual Machine")) {
+    if ($PSCmdlet.ShouldProcess($VMName, "Create Virtual Machine")) {
         try {
-            Write-LabLog "Creating Virtual Machine '$($VM.Name)'..." -Level INFO
+            Write-LabLog "Creating Virtual Machine '$($VMName)'..." -Level INFO
 
             # Resolve VM size dynamically (skip in WhatIf for speed)
             if (-not $WhatIfPreference) {
@@ -63,7 +46,7 @@ else {
 
             # Prompt for credentials (skip in WhatIf)
             if (-not $WhatIfPreference) {
-                $AdminCredential = Get-LabCredential -Message "Enter credentials for '$($VM.Name)'"
+                $AdminCredential = Get-LabCredential -Message "Enter credentials for '$($VMName)'"
             }
 
             # Resolve NIC (skip in WhatIf)
@@ -72,7 +55,7 @@ else {
             }
 
             # Build VM config
-            $vmConfig = New-AzVMConfig -VMName $VM.Name -VMSize $VM.Size
+            $vmConfig = New-AzVMConfig -VMName $VMName -VMSize $VM.Size
 
             if (-not $WhatIfPreference) {
                 $vmConfig = Set-AzVMOperatingSystem `
@@ -113,10 +96,10 @@ else {
                 -Tag $Tags `
                 -ErrorAction Stop
 
-            Write-LabLog "Virtual Machine '$($VM.Name)' created successfully." -Level SUCCESS
+            Write-LabLog "Virtual Machine '$($VMName)' created successfully." -Level SUCCESS
         }
         catch {
-            Write-LabLog "Failed to create Virtual Machine '$($VM.Name)'." -Level ERROR
+            Write-LabLog "Failed to create Virtual Machine '$($VMName)'." -Level ERROR
             Write-LabLog $_.Exception.Message -Level ERROR
             throw
         }
@@ -125,8 +108,8 @@ else {
 
 # Verification
 if (-not $WhatIfPreference) {
-    $vm = Get-AzVM -Name $VM.Name -ResourceGroupName $ResourceGroupName -ErrorAction Stop
-    Write-LabLog "Virtual Machine '$($VM.Name)' verified successfully." -Level SUCCESS
+    $vm = Get-AzVM -Name $VMName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
+    Write-LabLog "Virtual Machine '$($VMName)' verified successfully." -Level SUCCESS
 }
 else {
     Write-LabLog "WhatIf mode detected. Skipping deployment verification." -Level INFO
@@ -134,8 +117,7 @@ else {
 
 # Deployment Summary
 Write-DeploymentSummary -Properties @{
-    "Role"        = $Role
-    "VM Name"     = $VM.Name
+    "VM Name"     = $VMName
     "Size"        = $VM.Size
     "Image"       = "$($Image.Publisher) $($Image.Offer) $($Image.Sku) $($Image.Version)"
     "OS Disk"     = "$($OSDisk.Name) ($($OSDisk.SizeGB) GB, $($OSDisk.SKU))"
@@ -146,8 +128,9 @@ Write-DeploymentSummary -Properties @{
 
 # Return structured result
 return [PSCustomObject]@{
-    Role        = $Role
-    DisplayName = $VMProfile.DisplayName
-    VMName      = $VM.Name
-    Status      = "Succeeded"
+    VMName            = $VMName
+    ResourceGroupName = $ResourceGroupName
+    Location          = $Location
+    VM                = $vm
+    Status            = "Succeeded"
 }

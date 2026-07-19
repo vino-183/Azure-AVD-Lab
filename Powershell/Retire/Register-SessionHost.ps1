@@ -12,7 +12,7 @@
 .NOTES
     Part of Azure-AVD-Lab project.
 .EXAMPLE
-    .\14-Register-SessionHost.ps1 -VMName vm-avdlab-sessionhost01 -HostPoolName avdlab-hostpool01
+    .\05-Register-SessionHost.ps1 -VMName vm-avdlab-sessionhost01 -HostPoolName avdlab-hostpool01
 #>
 
 [CmdletBinding()]
@@ -27,12 +27,21 @@ param(
     [string]$RegistrationToken
 )
 
-# Import modules
-. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
+# Import common helpers
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\00-FrameworkRequirements.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\00-VMCatalog.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\01-CommonVariables.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\02-NetworkVariables.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\04-VM-Variables.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\05-StorageVariables.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\06-AvdHelpers.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\03-AzureHelpers.ps1"
 
 # Apply defaults if parameters not provided
-if (-not $ResourceGroupName) { $ResourceGroupName = $Global:ResourceGroupName }
-if (-not $HostPoolName)      { $HostPoolName      = $Global:HostPoolName }
+
+Write-LabLog "ResourceGroupName = '$ResourceGroupName'" -Level INFO
+Write-LabLog "HostPoolName      = '$HostPoolName'" -Level INFO
+Write-LabLog "VMName            = '$VMName'" -Level INFO
 
 try {
     Write-LabLog "Validating Azure connection..." -Level Info

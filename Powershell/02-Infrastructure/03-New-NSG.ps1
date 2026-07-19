@@ -2,7 +2,7 @@
 param()
 
 # Import common variables and helper functions
-. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\Import-Common.ps1"
 
 foreach ($moduleName in $requiredModules) {
     if (-not (Get-Module -ListAvailable -Name $moduleName)) {

@@ -1,16 +1,63 @@
-# Global variables for Azure AVD lab
+# ---------------------------------------------------------------------
+# Azure Subscription
+# ---------------------------------------------------------------------
 
-#region Azure
+$SubscriptionId = "54edc9dc-b9cc-417b-9064-fe06f3ca7fd6"
+$TenantId       = "3d05c30c-7909-4145-bed0-2358f2fa3c39"
 
-$SubscriptionId = "abcf40e1-733b-4521-997a-3818412c23e3"
+# ---------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------
 
-$TenantId = "188752e7-835a-41e7-a3e7-ae6a3f76e1aa"
-
-$Location = "East US"
-
-$Environment = "Dev" # Dev, Test, Prod
-
+$Environment       = "Dev"
+$Location          = "East US"
 $ResourceGroupName = "rg-avdlab-eastus-001"
+
+# ---------------------------------------------------------------------
+# Storage
+# ---------------------------------------------------------------------
+
+$StorageAccountName = "stavdprofile001"
+
+# ---------------------------------------------------------------------
+# AVD Variables
+# ---------------------------------------------------------------------
+
+$HostPoolName             = "hp-avdlab-pooled-001"
+
+$HostPoolType             = "Pooled"
+
+$LoadBalancerType         = "BreadthFirst"
+
+$PreferredAppGroupType    = "Desktop"
+
+$ApplicationGroupName     = "dag-avdlab-001"
+
+$ApplicationGroupType     = "Desktop"
+
+$WorkspaceName            = "ws-avdlab-001"
+
+$WorkspaceFriendlyName    = "AVD Lab Workspace"
+
+$WorkspaceDescription     = "Azure Virtual Desktop Lab Workspace"
+
+$MaxSessionLimit          = 10
+
+$StartVMOnConnect         = $true
+
+# ---------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------
+
+$LogFolderPath = Join-Path $PSScriptRoot "..\Logs"
+
+$LogFile = Join-Path $LogFolderPath (
+    "AVD-Lab-Deployment-{0}.log" -f (Get-Date -Format "yyyyMMdd-HHmmss")
+)
+
+# ---------------------------------------------------------------------
+# Tags
+# ---------------------------------------------------------------------
 
 $Tags = @{
     Environment = $Environment
@@ -18,36 +65,3 @@ $Tags = @{
     Owner       = "Vinodh"
     CreatedBy   = "PowerShell"
 }
-
-$LogFolderPath = "$PSScriptRoot\..\Logs"
-
-$LogFile = "$LogFolderPath\AVD-Lab-Deployment-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
-
-#endregion
-
-#region Resources
-
-$StorageAccountName = 'stavdprofile001'
-
-#endregion
-$Global:HostPoolName        = "hp-avdlab-pooled-001"
-
-$Global:HostPoolType        = "Pooled"
-
-$Global:LoadBalancerType    = "BreadthFirst"
-
-$Global:PreferredAppGroupType   = "Desktop"
-
-$Global:MaxSessionLimit     = 10
-
-$Global:StartVMOnConnect    = $true
-
-$Global:ApplicationGroupName = "dag-avdlab-001"
-
-$Global:ApplicationGroupType = "Desktop"
-
-$Global:WorkspaceName = "ws-avdlab-001"
-
-$Global:WorkspaceFriendlyName = "AVD Lab Workspace"
-
-$Global:WorkspaceDescription = "Azure Virtual Desktop Lab Workspace"

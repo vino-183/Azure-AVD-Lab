@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Create a new Azure Network Interface for the selected lab role.
+    Create a new Azure Network Interface for the Domain Controller.
 
 .DESCRIPTION
-    Reads the VM profile from VMCatalog based on the role provided.
-    Deploys a NIC using the profile’s network configuration.
+    Uses individual variables defined in VMVariables.ps1.
+    Deploys a NIC using the role’s network configuration.
 
 .AUTHOR
     Vinodh
@@ -14,22 +14,10 @@
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
-param(
-    [Parameter(Mandatory)]
-    [string]$Role
-)
+param()
 
 # Import common modules
-. "$PSScriptRoot\..\01-Common\Import-Common.ps1"
-
-# Validate role
-if (-not $VMCatalog.ContainsKey($Role)) {
-    throw "Unknown VM Role '$Role'."
-}
-
-# Retrieve profile
-$VMProfile = $VMCatalog[$Role]
-$Network   = $VMProfile.Network
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\Import-Common.ps1"
 
 # Validate prerequisites
 Write-LabLog "Validating prerequisites..." -Level INFO
@@ -51,43 +39,42 @@ if (-not (Test-VNetIfExists -VNetName $VNetName -ResourceGroupName $ResourceGrou
 $vnet = Get-AzVirtualNetwork -Name $VNetName -ResourceGroupName $ResourceGroupName
 
 # Validate subnet
-$SubnetName = $Network.SubnetName
-if (-not (Test-SubnetIfExists -VirtualNetwork $vnet -SubnetName $SubnetName)) {
-    throw "Subnet '$SubnetName' does not exist in Virtual Network '$VNetName'."
+if (-not (Test-SubnetIfExists -VirtualNetwork $vnet -SubnetName $DCSubnet)) {
+    throw "Subnet '$DCSubnet' does not exist in Virtual Network '$VNetName'."
 }
 
 # Retrieve subnet object
-$subnet = Get-AzVirtualNetworkSubnetConfig -Name $SubnetName -VirtualNetwork $vnet
+$subnet = Get-AzVirtualNetworkSubnetConfig -Name $DCSubnet -VirtualNetwork $vnet
 
 # Validate and retrieve NSG if specified
 $nsg = $null
-if ($Network.NSGName) {
-    if (-not (Test-NSGIfExists -NSGName $Network.NSGName -ResourceGroupName $ResourceGroupName)) {
-        throw "Network Security Group '$($Network.NSGName)' does not exist in resource group '$ResourceGroupName'."
+if ($DCNSGName) {
+    if (-not (Test-NSGIfExists -NSGName $DCNSGName -ResourceGroupName $ResourceGroupName)) {
+        throw "Network Security Group '$DCNSGName' does not exist in resource group '$ResourceGroupName'."
     }
-    $nsg = Get-AzNetworkSecurityGroup -Name $Network.NSGName -ResourceGroupName $ResourceGroupName
+    $nsg = Get-AzNetworkSecurityGroup -Name $DCNSGName -ResourceGroupName $ResourceGroupName
 }
 
 # Check whether the NIC already exists
-Write-LabLog "Checking if Network Interface '$($Network.NICName)' exists..." -Level INFO
-$nic = Get-AzNetworkInterface -Name $Network.NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+Write-LabLog "Checking if Network Interface '$DCNICName' exists..." -Level INFO
+$nic = Get-AzNetworkInterface -Name $DCNICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 
 if ($nic) {
-    Write-LabLog "Network Interface '$($Network.NICName)' already exists. Skipping deployment." -Level SUCCESS
+    Write-LabLog "Network Interface '$DCNICName' already exists. Skipping deployment." -Level SUCCESS
 }
 else {
-    if ($PSCmdlet.ShouldProcess($Network.NICName, "Create Network Interface")) {
+    if ($PSCmdlet.ShouldProcess($DCNICName, "Create Network Interface")) {
         try {
-            Write-LabLog "Creating Network Interface '$($Network.NICName)'..." -Level INFO
+            Write-LabLog "Creating Network Interface '$DCNICName'..." -Level INFO
 
             $nicParams = @{
-                Name                        = $Network.NICName
+                Name                        = $DCNICName
                 ResourceGroupName           = $ResourceGroupName
                 Location                    = $Location
                 SubnetId                    = $subnet.Id
-                PrivateIpAddress            = $Network.PrivateIP
-                EnableIPForwarding          = $Network.EnableIPForwarding
-                EnableAcceleratedNetworking = $Network.EnableAcceleratedNetworking
+                PrivateIpAddress            = $DCPrivateIP
+                EnableIPForwarding          = $false
+                EnableAcceleratedNetworking = $true
             }
 
             if ($nsg) {
@@ -96,10 +83,10 @@ else {
 
             $nic = New-AzNetworkInterface @nicParams -ErrorAction Stop
 
-            Write-LabLog "Network Interface '$($Network.NICName)' created successfully." -Level SUCCESS
+            Write-LabLog "Network Interface '$DCNICName' created successfully." -Level SUCCESS
         }
         catch {
-            Write-LabLog "Failed to create Network Interface '$($Network.NICName)'." -Level ERROR
+            Write-LabLog "Failed to create Network Interface '$DCNICName'." -Level ERROR
             Write-LabLog $_.Exception.Message -Level ERROR
             throw
         }
@@ -108,12 +95,12 @@ else {
 
 # Verification
 if (-not $WhatIfPreference) {
-    $nic = Get-AzNetworkInterface -Name $Network.NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+    $nic = Get-AzNetworkInterface -Name $DCNICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
     if ($nic) {
-        Write-LabLog "Network Interface '$($Network.NICName)' verified successfully." -Level SUCCESS
+        Write-LabLog "Network Interface '$DCNICName' verified successfully." -Level SUCCESS
     }
     else {
-        throw "Failed to verify Network Interface '$($Network.NICName)'."
+        throw "Failed to verify Network Interface '$DCNICName'."
     }
 }
 else {
@@ -122,10 +109,9 @@ else {
 
 # Deployment Summary
 Write-DeploymentSummary -Properties @{
-    "Role"              = $Role
-    "Network Interface" = $Network.NICName
-    "Private IP"        = $Network.PrivateIP
-    "Subnet"            = $Network.SubnetName
+    "Network Interface" = $DCNICName
+    "Private IP"        = $DCPrivateIP
+    "Subnet"            = $DCSubnet
     "Virtual Network"   = $VNetName
     "Provisioning"      = if ($WhatIfPreference) { "WhatIf" } else { $nic.ProvisioningState }
 }
