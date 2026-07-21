@@ -11,7 +11,7 @@
     Vinodh
 
 .DATE
-    2026-07-20
+    2026-07-21
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
@@ -65,6 +65,21 @@ try {
         $dataDisks  = @(Get-AzDisk -ResourceGroupName $ResourceGroupName | Where-Object { $_.Name -like "$VMName-data*" })
     }
 
+    # Capture Public IP name before NIC deletion
+    $publicIpName = $null
+    if ($EnablePublicIP -and $PublicIPName) {
+        $publicIpName = $PublicIPName
+    }
+    else {
+        $nic = Get-AzNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+        if ($nic) {
+            $pipConfig = $nic.IpConfigurations | Where-Object { $_.PublicIpAddress }
+            if ($pipConfig) {
+                $publicIpName = $pipConfig.PublicIpAddress.Id.Split("/")[-1]
+            }
+        }
+    }
+
     # Wait for OS disk to detach and delete
     if ($osDiskName) {
         Write-LabLog "Waiting for OS disk '$osDiskName' to become unattached..." -Level INFO
@@ -102,22 +117,17 @@ try {
     }
 
     # Delete Public IP
-    $nic = Get-AzNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
-    if ($nic) {
-        $pipConfig = $nic.IpConfigurations | Where-Object { $_.PublicIpAddress }
-        if ($pipConfig) {
-            $publicIpName = $pipConfig.PublicIpAddress.Id.Split("/")[-1]
-            if ($PSCmdlet.ShouldProcess($publicIpName, "Delete Public IP")) {
-                Write-LabLog "Deleting Public IP '$publicIpName'..." -Level INFO
-                Remove-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $ResourceGroupName -Force -ErrorAction Stop
-            }
+    if ($publicIpName) {
+        if ($PSCmdlet.ShouldProcess($publicIpName, "Delete Public IP")) {
+            Write-LabLog "Deleting Public IP '$publicIpName'..." -Level INFO
+            Remove-AzPublicIpAddress -Name $publicIpName -ResourceGroupName $ResourceGroupName -Force -ErrorAction Stop
         }
     }
 
     # Verify cleanup
     Write-LabLog "Verifying cleanup..." -Level INFO
     $vmExists       = Test-VMIfExists -VMName $VMName -ResourceGroupName $ResourceGroupName
-    $nicExists      = Test-NicIfExists -Name $NICName -ResourceGroupName $ResourceGroupName
+    $nicExists      = Test-NicIfExists  -NicName $NICName -ResourceGroupName $ResourceGroupName
     $osDiskExists   = Test-DiskIfExists -Name $osDiskName -ResourceGroupName $ResourceGroupName
     $publicIpExists = if ($publicIpName) { Test-PublicIpIfExists -Name $publicIpName -ResourceGroupName $ResourceGroupName } else { $false }
 

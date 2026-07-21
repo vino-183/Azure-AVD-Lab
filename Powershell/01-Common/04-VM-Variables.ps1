@@ -30,6 +30,8 @@
 $DomainController = @{
     VMName           = "vm-avdlab-dc01"
     ComputerName     = "AVDDC01"
+    EnablePublicIP   = $true
+    PublicIPName     = "pip-avdlab-dc01"
     NICName          = "nic-avdlab-dc01"
     PrivateIPAddress = "10.20.1.4"
     VMSize           = "Standard_D2als_v7"
@@ -61,6 +63,7 @@ $WebVM = @{
 
 $SessionHost = @{
     VMName           = "vm-avdlab-sh01"
+    EnablePublicIP   = $false
     ComputerName     = "AVDSH01"
     NICName          = "nic-avdlab-sh01"
     PrivateIPAddress = "10.20.3.4"
@@ -116,3 +119,4 @@ if ([string]::IsNullOrWhiteSpace($VMName))           { throw "VMName was not ini
 if ([string]::IsNullOrWhiteSpace($NICName))          { throw "NICName was not initialized." }
 if ([string]::IsNullOrWhiteSpace($SubnetName))       { throw "SubnetName was not initialized." }
 if ([string]::IsNullOrWhiteSpace($NSGName))          { throw "NSGName was not initialized." }
+

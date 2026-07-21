@@ -1,23 +1,22 @@
 <#
 .SYNOPSIS
-    Create a new Azure Network Interface for the Domain Controller.
+    Create a new Azure Network Interface.
 
 .DESCRIPTION
-    Uses individual variables defined in VMVariables.ps1.
-    Deploys a NIC using the role’s network configuration.
+    Deploys a NIC using the VM’s network configuration.
+    Optionally creates and attaches a Public IP if enabled.
+    Supports static or dynamic IP assignment, configurable features,
+    and robust verification.
 
 .AUTHOR
     Vinodh
 
 .DATE
-    2026-07-13
+    2026-07-21
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
 param()
-
-# Import common modules
-. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\Import-Common.ps1"
 
 # Validate prerequisites
 Write-LabLog "Validating prerequisites..." -Level INFO
@@ -55,33 +54,64 @@ if ($NSGName) {
     $nsg = Get-AzNetworkSecurityGroup -Name $NSGName -ResourceGroupName $ResourceGroupName
 }
 
+# Initialize Public IP reference
+$PublicIP = $null
+
 # Check whether the NIC already exists
 Write-LabLog "Checking if Network Interface '$NICName' exists..." -Level INFO
 $nic = Get-AzNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 
 if ($nic) {
     Write-LabLog "Network Interface '$NICName' already exists. Skipping deployment." -Level SUCCESS
+
+    if ($EnablePublicIP) {
+        $PublicIP = Get-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+    }
 }
 else {
     if ($PSCmdlet.ShouldProcess($NICName, "Create Network Interface")) {
         try {
-            Write-LabLog "Creating Network Interface '$NICName'..." -Level INFO
+            # Optional Public IP (idempotent)
+            if ($EnablePublicIP) {
+                $PublicIP = Get-AzPublicIpAddress -Name $PublicIPName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+                if (-not $PublicIP) {
+                    $PublicIP = New-LabPublicIPAddress `
+                        -ResourceGroupName $ResourceGroupName `
+                        -Location $Location `
+                        -PublicIPName $PublicIPName
+                }
+            }
 
+            # NIC parameters
             $nicParams = @{
                 Name                        = $NICName
                 ResourceGroupName           = $ResourceGroupName
                 Location                    = $Location
                 SubnetId                    = $subnet.Id
-                PrivateIpAddress            = $PrivateIPAddress
-                EnableIPForwarding          = $false
-                EnableAcceleratedNetworking = $true
+                EnableIPForwarding          = $EnableIPForwarding
+                EnableAcceleratedNetworking = $EnableAcceleratedNetworking
+                PrivateIpAddressVersion     = "IPv4"
+                PrivateIpAllocationMethod   = $PrivateIPAllocationMethod
+            }
+
+            if ($PrivateIPAllocationMethod -eq "Static" -and $PrivateIPAddress) {
+                $nicParams.PrivateIpAddress = $PrivateIPAddress
             }
 
             if ($nsg) {
                 $nicParams.NetworkSecurityGroupId = $nsg.Id
             }
 
+            if ($PublicIP) {
+                $nicParams.PublicIpAddressId = $PublicIP.Id
+            }
+
             $nic = New-AzNetworkInterface @nicParams -ErrorAction Stop
+
+            # Verify Public IP attachment
+            if ($EnablePublicIP -and -not $nic.IpConfigurations[0].PublicIpAddress) {
+                throw "Public IP was not attached to the Network Interface."
+            }
 
             Write-LabLog "Network Interface '$NICName' created successfully." -Level SUCCESS
         }
@@ -102,16 +132,26 @@ if (-not $WhatIfPreference) {
     else {
         throw "Failed to verify Network Interface '$NICName'."
     }
+
+    if ($PublicIP -and $PublicIP.ProvisioningState -ne "Succeeded") {
+        throw "Public IP '$($PublicIP.Name)' is not in a Succeeded state."
+    }
 }
 else {
     Write-LabLog "WhatIf mode detected. Skipping deployment verification." -Level INFO
 }
 
 # Deployment Summary
+$AssignedPrivateIP = if ($nic) { $nic.IpConfigurations[0].PrivateIpAddress } else { $PrivateIPAddress }
+
 Write-DeploymentSummary -Properties @{
     "Network Interface" = $NICName
-    "Private IP"        = $PrivateIPAddress
+    "Private IP"        = $AssignedPrivateIP
+    "Public IP"         = if ($PublicIP) { "$($PublicIP.Name) ($($PublicIP.IpAddress))" } else { "None" }
     "Subnet"            = $SubnetName
     "Virtual Network"   = $VNetName
+    "NSG"               = if ($nsg) { $nsg.Name } else { "None" }
+    "Accelerated Net"   = $EnableAcceleratedNetworking
+    "IP Forwarding"     = $EnableIPForwarding
     "Provisioning"      = if ($WhatIfPreference) { "WhatIf" } else { $nic.ProvisioningState }
 }

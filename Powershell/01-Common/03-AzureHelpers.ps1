@@ -180,7 +180,29 @@ function Test-VNetIfExists          { param([string]$ResourceGroupName,[string]$
 function Test-SubnetIfExists        { param($VirtualNetwork,[string]$SubnetName) return ($VirtualNetwork.Subnets.Name -contains $SubnetName) }
 function Test-PublicIpIfExists      { param([string]$ResourceGroupName,[string]$PublicIpName) Get-AzPublicIpAddress -Name $PublicIpName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue }
 function Test-NSGIfExists           { param([string]$ResourceGroupName,[string]$NSGName) Get-AzNetworkSecurityGroup -Name $NSGName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue }
-function Test-NicIfExists           { param([string]$ResourceGroupName,[string]$NicName) Get-AzNetworkInterface -Name $NicName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue }
+function Test-NicIfExists {
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ResourceGroupName,
+
+        [Parameter(Mandatory)]
+        [string]$NicName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($NicName)) {
+        return $false
+    }
+
+    return $null -ne (
+        Get-AzNetworkInterface `
+            -Name $NicName `
+            -ResourceGroupName $ResourceGroupName `
+            -ErrorAction SilentlyContinue
+    )
+}
+
 function Test-VMIfExists {
 
     param(

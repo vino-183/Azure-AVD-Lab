@@ -65,3 +65,8 @@ $Tags = @{
     Owner       = "Vinodh"
     CreatedBy   = "PowerShell"
 }
+
+# Public IP Configuration
+$EnablePublicIP = $false          # Default: No Public IP
+$PublicIPSku    = "Standard"
+$PublicIPAllocationMethod = "Static"
