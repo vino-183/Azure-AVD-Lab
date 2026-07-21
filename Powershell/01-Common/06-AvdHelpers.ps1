@@ -136,27 +136,3 @@ function Get-AvdBootLoaderVersion {
         return $null
     }
 }
-
-function Test-AvdAgentInstalled {
-    [CmdletBinding()]
-    param([string]$VMName,[string]$ResourceGroupName)
-    try {
-        $script = @'
-            $services = @("RDAgentBootLoader","RDInfraAgent")
-            $status = @{}
-            foreach ($svc in $services) {
-                $service = Get-Service -Name $svc -ErrorAction SilentlyContinue
-                if ($service) { $status[$svc] = $service.Status }
-                else { $status[$svc] = "NotInstalled" }
-            }
-            return $status
-'@
-        $result = Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroupName -Name $VMName -CommandId 'RunPowerShellScript' -ScriptString $script -ErrorAction Stop
-        $output = $result.Value[0].Message | ConvertFrom-Json
-        return $output
-    }
-    catch {
-        Write-LabLog "Failed to check AVD Agent installation: $_" -Level ERROR
-        return $null
-    }
-}

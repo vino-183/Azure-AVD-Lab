@@ -41,7 +41,7 @@ try {
             -ImageOffer $ImageOffer `
             -ImageSku $ImageSku `
             -ImageVersion $ImageVersion `
-            -OSDiskSku $OSDiskType
+            -OSDiskSku $OSDiskSku
 
         if (-not $VmDeployment) {
             throw "VM deployment failed."

@@ -7,6 +7,7 @@ $VNetName      = "vnet-avdlab-eastus-001"
 $AddressSpace  = "10.20.0.0/16"
 
 # Subnet catalog (for loops/automation)
+
 $SubnetNames = @(
     "snet-infrastructure",
     "snet-sessionhosts",

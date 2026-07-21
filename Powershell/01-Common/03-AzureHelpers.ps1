@@ -181,7 +181,25 @@ function Test-SubnetIfExists        { param($VirtualNetwork,[string]$SubnetName)
 function Test-PublicIpIfExists      { param([string]$ResourceGroupName,[string]$PublicIpName) Get-AzPublicIpAddress -Name $PublicIpName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue }
 function Test-NSGIfExists           { param([string]$ResourceGroupName,[string]$NSGName) Get-AzNetworkSecurityGroup -Name $NSGName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue }
 function Test-NicIfExists           { param([string]$ResourceGroupName,[string]$NicName) Get-AzNetworkInterface -Name $NicName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue }
-function Test-VMIfExists            { param([string]$ResourceGroupName,[string]$VMName) Get-AzVM -Name $VMName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue }
+function Test-VMIfExists {
+
+    param(
+        [Parameter(Mandatory)]
+        [string]$ResourceGroupName,
+
+        [Parameter(Mandatory)]
+        [string]$VMName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($VMName)) {
+        throw "Test-VMIfExists: VMName cannot be null or empty."
+    }
+
+    Get-AzVM `
+        -Name $VMName `
+        -ResourceGroupName $ResourceGroupName `
+        -ErrorAction SilentlyContinue
+}
 function Test-DiskIfExists          { param([string]$ResourceGroupName,[string]$DiskName) Get-AzDisk -Name $DiskName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue }
 function Test-StorageAccountIfExists{ param([string]$StorageAccountName,[string]$ResourceGroupName) try { Get-AzStorageAccount -ResourceGroupName $ResourceGroupName -Name $StorageAccountName -ErrorAction Stop; return $true } catch { return $false } }
 function Test-NetworkInterfaceIfExists { param([string]$NetworkInterfaceName,[string]$ResourceGroupName) try { Get-AzNetworkInterface -Name $NetworkInterfaceName -ResourceGroupName $ResourceGroupName -ErrorAction Stop; return $true } catch { return $false } }
@@ -191,81 +209,96 @@ function Test-NetworkInterfaceIfExists { param([string]$NetworkInterfaceName,[st
 #---------------------------------------
 
 function Get-LabVmSku {
+    <#
+    .SYNOPSIS
+        Returns the best matching VM SKU for the specified Azure region.
+
+    .DESCRIPTION
+        Filters Azure VM SKUs by location, CPU, memory and Premium SSD
+        capability, then returns the preferred SKU based on family order.
+
+    .PARAMETER Location
+        Azure region display name (Example: East US)
+
+    .PARAMETER vCPU
+        Minimum required vCPUs.
+
+    .PARAMETER MemoryGB
+        Minimum required memory in GB.
+
+    .PARAMETER RequirePremiumStorage
+        Return only Premium SSD capable SKUs.
+
+    .OUTPUTS
+        String
+    #>
+
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [string]$Location,
 
+        [ValidateRange(1,128)]
         [int]$vCPU = 2,
+
+        [ValidateRange(1,2048)]
         [int]$MemoryGB = 4,
+
         [switch]$RequirePremiumStorage
     )
 
-    Write-LabLog "Searching VM SKUs in '$Location'..." -Level INFO
-
-    # Step 1 – Retrieve SKUs
-    $Skus = Get-AzComputeResourceSku | Where-Object { $_.ResourceType -eq "virtualMachines" }
-
-    # Step 2 – Filter by location
     $NormalizedLocation = ($Location -replace '\s','').ToLower()
-    $Skus = $Skus | Where-Object {
-        ($_.Locations | ForEach-Object { ($_ -replace '\s','').ToLower() }) -contains $NormalizedLocation
-    }
 
-    # Step 3 – Exclude restricted SKUs
-    $Skus = $Skus | Where-Object { $_.Restrictions.Count -eq 0 }
+    $Candidates = foreach ($Sku in Get-AzComputeResourceSku) {
+        if ($Sku.ResourceType -ne "virtualMachines") { continue }
 
-    # Step 4 – Exclude ARM SKUs
-    $Skus = $Skus | Where-Object {
-        ($_.Capabilities | Where-Object Name -eq "CpuArchitectureType").Value -notmatch "Arm"
-    }
+        $Locations = $Sku.Locations | ForEach-Object {
+            ($_ -replace '\s','').ToLower()
+        }
+        if ($Locations -notcontains $NormalizedLocation) { continue }
 
-    # Step 5 – Candidate selection
-    $Candidates = foreach ($Sku in $Skus) {
         $Caps = @{}
         foreach ($Cap in $Sku.Capabilities) { $Caps[$Cap.Name] = $Cap.Value }
 
-        $Cpu       = $Caps["vCPUs"]
-        $Memory    = $Caps["MemoryGB"]
-        $PremiumIO = $Caps["PremiumIO"]
+        if (-not $Caps.ContainsKey("vCPUs")) { continue }
+        if (-not $Caps.ContainsKey("MemoryGB")) { continue }
 
-        if (-not $Cpu -or -not $Memory) { continue }
-        if ([int]$Cpu -eq $vCPU -and [double]$Memory -ge $MemoryGB) {
-            [PSCustomObject]@{
-                Name      = $Sku.Name
-                MemoryGB  = [double]$Memory
-                PremiumIO = $PremiumIO
-            }
+        $Cpu = [int]$Caps["vCPUs"]
+        $Mem = [double]$Caps["MemoryGB"]
+
+        if ($Cpu -lt $vCPU) { continue }
+        if ($Mem -lt $MemoryGB) { continue }
+
+        $Premium = $false
+        if ($Caps.ContainsKey("PremiumIO")) {
+            $Premium = ($Caps["PremiumIO"] -eq "True")
+        }
+        if ($RequirePremiumStorage -and -not $Premium) { continue }
+
+        [PSCustomObject]@{
+            Name      = $Sku.Name
+            CPU       = $Cpu
+            MemoryGB  = $Mem
+            PremiumIO = $Premium
         }
     }
 
     if (-not $Candidates) {
-        throw "No suitable VM SKU found in '$Location'."
+        throw "No VM SKU found in '$Location' matching CPU >= $vCPU and Memory >= $MemoryGB GB."
     }
 
-    # Step 6 – Prefer Premium IO if requested
-    if ($RequirePremiumStorage) {
-        $PremiumCandidates = $Candidates | Where-Object { $_.PremiumIO -eq "True" }
-        if ($PremiumCandidates) {
-            $Candidates = $PremiumCandidates
-        }
+    $PreferredFamilies = @("Standard_D","Standard_B","Standard_E","Standard_F","Standard_A")
+
+    foreach ($Family in $PreferredFamilies) {
+        $Match = $Candidates |
+            Where-Object Name -like "$Family*" |
+            Sort-Object CPU, MemoryGB |
+            Select-Object -First 1
+        if ($Match) { return $Match.Name }
     }
 
-    # Step 7 – Rank preferred families
-    $FamilyOrder = @("Standard_D","Standard_B","Standard_E","Standard_F","Standard_A")
-    foreach ($Family in $FamilyOrder) {
-        $Match = $Candidates | Where-Object { $_.Name -like "$Family*" } |
-                 Sort-Object MemoryGB | Select-Object -First 1
-        if ($Match) {
-            Write-LabLog "Selected VM SKU: $($Match.Name)" -Level SUCCESS
-            return $Match.Name
-        }
-    }
-
-    # Step 8 – Fallback
-    $Selected = $Candidates | Sort-Object MemoryGB | Select-Object -First 1
-    Write-LabLog "Selected VM SKU: $($Selected.Name)" -Level SUCCESS
-    return $Selected.Name
+    $Fallback = $Candidates | Sort-Object CPU, MemoryGB | Select-Object -First 1
+    return $Fallback.Name
 }
 
 

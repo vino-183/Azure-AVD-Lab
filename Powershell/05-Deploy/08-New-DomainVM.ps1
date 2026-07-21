@@ -16,8 +16,12 @@
 [CmdletBinding(SupportsShouldProcess)]
 param()
 
+$DeploymentType = "DomainController"
+
 # Import common modules
 . "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\01-Common\Import-Common.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\02-Infrastructure\05-New-NetworkInterface.ps1"
+. "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\02-Infrastructure\03-New-NSG.ps1"
 
 try {
     # Validate prerequisites
@@ -27,48 +31,48 @@ try {
     }
 
     # Ensure NIC exists
-    Write-LabLog "Checking if NIC '$DCNICName' exists..." -Level INFO
-    $nic = Get-AzNetworkInterface -Name $DCNICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+    Write-LabLog "Checking if NIC '$NICName' exists..." -Level INFO
+    $nic = Get-AzNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
     if (-not $nic) {
-        Write-LabLog "NIC '$DCNICName' not found. Running NIC deployment script..." -Level INFO
-        . "D:\Cloud-Labs\Azure-AVD-Lab\Powershell\02-Infrastructure\05-New-NetworkInterface.ps1"
-        $nic = Get-AzNetworkInterface -Name $DCNICName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
-        Write-LabLog "NIC '$DCNICName' created successfully." -Level SUCCESS
+        Write-LabLog "NIC '$NICName' not found. Running NIC deployment script..." -Level INFO
+        $nic = Get-AzNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
+        Write-LabLog "NIC '$NICName' created successfully." -Level SUCCESS
     }
 
     # Check whether the VM already exists
-    Write-LabLog "Checking if Virtual Machine '$DCVMName' exists..." -Level INFO
-    $existingVm = Get-AzVM -Name $DCVMName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+    Write-LabLog "Checking if Virtual Machine '$VMName' exists..." -Level INFO
+    $existingVm = Get-AzVM -Name $VMName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 
     if ($existingVm) {
-        Write-LabLog "Virtual Machine '$DCVMName' already exists. Skipping deployment." -Level SUCCESS
+        Write-LabLog "Virtual Machine '$VMName' already exists. Skipping deployment." -Level SUCCESS
     }
     else {
-        if ($PSCmdlet.ShouldProcess($DCVMName, "Create Virtual Machine")) {
-            Write-LabLog "Creating Virtual Machine '$DCVMName'..." -Level INFO
+        if ($PSCmdlet.ShouldProcess($VMName, "Create Virtual Machine")) {
+            Write-LabLog "Creating Virtual Machine '$VMName'..." -Level INFO
 
-            # Resolve VM size dynamically (skip in WhatIf for speed)
-            if (-not $WhatIfPreference) {
-                $resolvedSize = Get-LabVmSku -Location $Location -vCPU $DCvCPU -MemoryGB $DCMemGB -RequirePremiumStorage:($DCOSDiskType -eq "Premium_LRS")
+            # Resolve VM size
+            if ([string]::IsNullOrWhiteSpace($VMSize)) {
+                Write-LabLog "VMSize not specified. Resolving compatible SKU..." -Level INFO
+                $resolvedSize = Get-LabVmSku -Location $Location -RequirePremiumStorage:($OSDiskSku -eq "Premium_LRS")
             }
             else {
-                Write-LabLog "WhatIf mode detected. Skipping dynamic SKU lookup." -Level INFO
-                $resolvedSize = $DCVMSize
+                $resolvedSize = $VMSize
+                Write-LabLog "Using configured VM SKU '$resolvedSize'." -Level INFO
             }
 
             # Prompt for credentials (skip in WhatIf)
             if (-not $WhatIfPreference) {
-                $AdminCredential = Get-LabCredential -Message "Enter credentials for '$DCVMName'"
+                $AdminCredential = Get-LabCredential -Message "Enter credentials for '$VMName'"
             }
 
             # Build VM config
-            $vmConfig = New-AzVMConfig -VMName $DCVMName -VMSize $resolvedSize
+            $vmConfig = New-AzVMConfig -VMName $VMName -VMSize $resolvedSize
 
             if (-not $WhatIfPreference) {
                 $vmConfig = Set-AzVMOperatingSystem `
                     -VM $vmConfig `
                     -Windows `
-                    -ComputerName $DCCompName `
+                    -ComputerName $ComputerName `
                     -Credential $AdminCredential `
                     -ProvisionVMAgent `
                     -EnableAutoUpdate
@@ -76,23 +80,23 @@ try {
 
             $vmConfig = Set-AzVMSourceImage `
                 -VM $vmConfig `
-                -PublisherName $DCImgPub `
-                -Offer $DCImgOffer `
-                -Skus $DCImgSku `
-                -Version $DCImgVer
+                -PublisherName $ImagePublisher `
+                -Offer $ImageOffer `
+                -Skus $ImageSku `
+                -Version $ImageVersion
 
             $vmConfig = Set-AzVMOSDisk `
                 -VM $vmConfig `
-                -Name $DCOSDisk `
+                -Name "$VMName-OSDisk" `
                 -CreateOption FromImage `
-                -StorageAccountType $DCOSDiskType
+                -StorageAccountType $OSDiskSku
 
             if (-not $WhatIfPreference) {
                 $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
             }
 
             # Boot diagnostics toggle
-            if ($DCBootDiag) {
+            if ($BootDiagnostics) {
                 $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable
             }
             else {
@@ -107,14 +111,14 @@ try {
                 -Tag $Tags `
                 -ErrorAction Stop
 
-            Write-LabLog "Virtual Machine '$DCVMName' created successfully." -Level SUCCESS
+            Write-LabLog "Virtual Machine '$VMName' created successfully." -Level SUCCESS
         }
     }
 
     # Verification
     if (-not $WhatIfPreference) {
-        $vm = Get-AzVM -Name $DCVMName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
-        Write-LabLog "Virtual Machine '$DCVMName' verified successfully." -Level SUCCESS
+        $vm = Get-AzVM -Name $VMName -ResourceGroupName $ResourceGroupName -ErrorAction Stop
+        Write-LabLog "Virtual Machine '$VMName' verified successfully." -Level SUCCESS
     }
     else {
         Write-LabLog "WhatIf mode detected. Skipping deployment verification." -Level INFO
@@ -122,19 +126,18 @@ try {
 
     # Deployment Summary
     Write-DeploymentSummary -Properties @{
-        "VM Name"     = $DCVMName
-        "Size"        = $resolvedSize
-        "Image"       = "$DCImgPub $DCImgOffer $DCImgSku $DCImgVer"
-        "OS Disk"     = "$DCOSDisk ($DCOSDiskType)"
-        "NIC"         = $DCNICName
-        "Subnet"      = $DCSubnet
-        "Tags"        = ($Tags.Keys | ForEach-Object { "$_=$($Tags[$_])" }) -join "; "
+        "VM Name"      = $VMName
+        "Size"         = $resolvedSize
+        "Image"        = "$ImagePublisher $ImageOffer $ImageSku $ImageVersion"
+        "OS Disk"      = "$VMName-OSDisk ($OSDiskSku)"
+        "NIC"          = $NICName
+        "Subnet"       = $SubnetName
+        "Tags"         = ($Tags.Keys | ForEach-Object { "$_=$($Tags[$_])" }) -join "; "
         "Provisioning" = if ($WhatIfPreference) { "WhatIf" } else { $vm.ProvisioningState }
     }
 
-    # Return structured result
     return [PSCustomObject]@{
-        VMName            = $DCVMName
+        VMName            = $VMName
         ResourceGroupName = $ResourceGroupName
         Location          = $Location
         VM                = $vm

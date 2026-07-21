@@ -39,40 +39,40 @@ if (-not (Test-VNetIfExists -VNetName $VNetName -ResourceGroupName $ResourceGrou
 $vnet = Get-AzVirtualNetwork -Name $VNetName -ResourceGroupName $ResourceGroupName
 
 # Validate subnet
-if (-not (Test-SubnetIfExists -VirtualNetwork $vnet -SubnetName $DCSubnet)) {
-    throw "Subnet '$DCSubnet' does not exist in Virtual Network '$VNetName'."
+if (-not (Test-SubnetIfExists -VirtualNetwork $vnet -SubnetName $SubnetName)) {
+    throw "Subnet '$SubnetName' does not exist in Virtual Network '$VNetName'."
 }
 
 # Retrieve subnet object
-$subnet = Get-AzVirtualNetworkSubnetConfig -Name $DCSubnet -VirtualNetwork $vnet
+$subnet = Get-AzVirtualNetworkSubnetConfig -Name $SubnetName -VirtualNetwork $vnet
 
 # Validate and retrieve NSG if specified
 $nsg = $null
-if ($DCNSGName) {
-    if (-not (Test-NSGIfExists -NSGName $DCNSGName -ResourceGroupName $ResourceGroupName)) {
-        throw "Network Security Group '$DCNSGName' does not exist in resource group '$ResourceGroupName'."
+if ($NSGName) {
+    if (-not (Test-NSGIfExists -NSGName $NSGName -ResourceGroupName $ResourceGroupName)) {
+        throw "Network Security Group '$NSGName' does not exist in resource group '$ResourceGroupName'."
     }
-    $nsg = Get-AzNetworkSecurityGroup -Name $DCNSGName -ResourceGroupName $ResourceGroupName
+    $nsg = Get-AzNetworkSecurityGroup -Name $NSGName -ResourceGroupName $ResourceGroupName
 }
 
 # Check whether the NIC already exists
-Write-LabLog "Checking if Network Interface '$DCNICName' exists..." -Level INFO
-$nic = Get-AzNetworkInterface -Name $DCNICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+Write-LabLog "Checking if Network Interface '$NICName' exists..." -Level INFO
+$nic = Get-AzNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 
 if ($nic) {
-    Write-LabLog "Network Interface '$DCNICName' already exists. Skipping deployment." -Level SUCCESS
+    Write-LabLog "Network Interface '$NICName' already exists. Skipping deployment." -Level SUCCESS
 }
 else {
-    if ($PSCmdlet.ShouldProcess($DCNICName, "Create Network Interface")) {
+    if ($PSCmdlet.ShouldProcess($NICName, "Create Network Interface")) {
         try {
-            Write-LabLog "Creating Network Interface '$DCNICName'..." -Level INFO
+            Write-LabLog "Creating Network Interface '$NICName'..." -Level INFO
 
             $nicParams = @{
-                Name                        = $DCNICName
+                Name                        = $NICName
                 ResourceGroupName           = $ResourceGroupName
                 Location                    = $Location
                 SubnetId                    = $subnet.Id
-                PrivateIpAddress            = $DCPrivateIP
+                PrivateIpAddress            = $PrivateIPAddress
                 EnableIPForwarding          = $false
                 EnableAcceleratedNetworking = $true
             }
@@ -83,10 +83,10 @@ else {
 
             $nic = New-AzNetworkInterface @nicParams -ErrorAction Stop
 
-            Write-LabLog "Network Interface '$DCNICName' created successfully." -Level SUCCESS
+            Write-LabLog "Network Interface '$NICName' created successfully." -Level SUCCESS
         }
         catch {
-            Write-LabLog "Failed to create Network Interface '$DCNICName'." -Level ERROR
+            Write-LabLog "Failed to create Network Interface '$NICName'." -Level ERROR
             Write-LabLog $_.Exception.Message -Level ERROR
             throw
         }
@@ -95,12 +95,12 @@ else {
 
 # Verification
 if (-not $WhatIfPreference) {
-    $nic = Get-AzNetworkInterface -Name $DCNICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
+    $nic = Get-AzNetworkInterface -Name $NICName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
     if ($nic) {
-        Write-LabLog "Network Interface '$DCNICName' verified successfully." -Level SUCCESS
+        Write-LabLog "Network Interface '$NICName' verified successfully." -Level SUCCESS
     }
     else {
-        throw "Failed to verify Network Interface '$DCNICName'."
+        throw "Failed to verify Network Interface '$NICName'."
     }
 }
 else {
@@ -109,9 +109,9 @@ else {
 
 # Deployment Summary
 Write-DeploymentSummary -Properties @{
-    "Network Interface" = $DCNICName
-    "Private IP"        = $DCPrivateIP
-    "Subnet"            = $DCSubnet
+    "Network Interface" = $NICName
+    "Private IP"        = $PrivateIPAddress
+    "Subnet"            = $SubnetName
     "Virtual Network"   = $VNetName
     "Provisioning"      = if ($WhatIfPreference) { "WhatIf" } else { $nic.ProvisioningState }
 }

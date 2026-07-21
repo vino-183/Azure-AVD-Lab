@@ -1,106 +1,118 @@
-# ============================
-# Network Variables
-# ============================
+<#
+.SYNOPSIS
+    VM Configuration Variables
 
-# NSG
-$NSGName = "nsg-avdlab-eastus-001"
+.DESCRIPTION
+    Defines VM configurations and maps the selected VM
+    to generic deployment variables used by the infrastructure scripts.
 
-# Virtual Network
-$VNetName     = "vnet-avdlab-eastus-001"
-$AddressSpace = "10.20.0.0/16"
+.NOTES
+    Infrastructure scripts should ONLY reference generic variables:
+        $VMName
+        $ComputerName
+        $NICName
+        $PrivateIPAddress
+        $SubnetName
+        $NSGName
+        $VMSize
+        $ImagePublisher
+        $ImageOffer
+        $ImageSku
+        $ImageVersion
+        $OSDiskSizeGB
+        $OSDiskSku
+#>
 
-# Subnet catalog (for automation/loops)
-$SubnetNames = @(
-    "snet-infrastructure",
-    "snet-sessionhosts",
-    "snet-privateendpoints",
-    "snet-futureservices",
-    "snet-domain",
-    "snet-web"
-)
+# ============================================================
+# VM Catalog
+# ============================================================
 
-$SubnetAddressSpaces = @{
-    "snet-infrastructure"   = "10.20.1.0/24"
-    "snet-sessionhosts"     = "10.20.2.0/24"
-    "snet-privateendpoints" = "10.20.3.0/24"
-    "snet-futureservices"   = "10.20.4.0/24"
-    "snet-domain"           = "10.20.5.0/24"
-    "snet-web"              = "10.20.6.0/24"
+$DomainController = @{
+    VMName           = "vm-avdlab-dc01"
+    ComputerName     = "AVDDC01"
+    NICName          = "nic-avdlab-dc01"
+    PrivateIPAddress = "10.20.1.4"
+    VMSize           = "Standard_D2als_v7"
+    ImagePublisher   = "MicrosoftWindowsServer"
+    ImageOffer       = "WindowsServer"
+    ImageSku         = "2025-datacenter-azure-edition"
+    ImageVersion     = "latest"
+    OSDiskSizeGB     = 128
+    OSDiskSku        = "Premium_LRS"
+    SubnetName       = $InfrastructureSubnet
+    NSGName          = $NSGName
 }
 
-# Frequently used subnet variables
-$InfrastructureSubnet   = "snet-infrastructure"
-$SessionHostSubnet      = "snet-sessionhosts"
-$PrivateEndpointSubnet  = "snet-privateendpoints"
-$FutureServicesSubnet   = "snet-futureservices"
-$DomainSubnet           = "snet-domain"
-$WebSubnet              = "snet-web"
-
-# NIC defaults
-$EnabledAcceleratedNetworking = $false
-$EnableIPForwarding           = $false
-$PrivateIPAllocationMethod    = "Dynamic" # Options: "Dynamic", "Static"
-# $CreatePublicIP = $false
-
-# ============================
-# Web VM Variables
-# ============================
-$WebVMName     = "vm-avdlab-web01"
-$WebVMSize     = "Standard_D2alds_v7"
-$WebCompName   = "AVDWEB01"
-$WebOSDisk     = "osdisk-avdlab-web01"
-$WebOSDiskType = "Premium_LRS"
-$WebImgPub     = "MicrosoftWindowsServer"
-$WebImgOffer   = "WindowsServer"
-$WebImgSku     = "2022-datacenter-azure-edition"
-$WebImgVer     = "latest"
-$WebBootDiag   = $true
-$WebSubnet     = $WebSubnet
-$WebNICName    = "nic-avdlab-web01"
-$WebvCPU       = 2
-$WebMemGB      = 4
-
-# ============================
-# Domain Controller VM Variables
-# ============================
-$DCVMName     = "vm-avdlab-dc01"
-$DCVMSize     = "Standard_D2alds_v7"
-$DCCompName   = "AVDDC01"
-$DCOSDisk     = "osdisk-avdlab-dc01"
-$DCOSDiskType = "Premium_LRS"
-$DCImgPub     = "MicrosoftWindowsServer"
-$DCImgOffer   = "WindowsServer"
-$DCImgSku     = "2022-datacenter-azure-edition"
-$DCImgVer     = "latest"
-$DCBootDiag   = $true
-$DCvCPU       = 2
-$DCMemGB      = 4
-$DCNICName    = "nic-avdlab-dc01"
-$DCSubnet     = $DomainSubnet   # ✅ references the defined subnet variable
-$DCPrivateIP  = "10.20.5.4"
-$DCNSGName    = "nsg-domain"
-
-$Domain = @{
-    Name             = "contoso.local"
-    NetBIOS          = "CONTOSO"
-    SafeModePassword = "<SecureString>"
-    OU               = "OU=AVD,DC=contoso,DC=local"
+$WebVM = @{
+    VMName           = "vm-avdlab-web01"
+    ComputerName     = "AVDWEB01"
+    NICName          = "nic-avdlab-web01"
+    PrivateIPAddress = "10.20.2.4"
+    VMSize           = "Standard_D2als_v7"
+    ImagePublisher   = "MicrosoftWindowsServer"
+    ImageOffer       = "WindowsServer"
+    ImageSku         = "2025-datacenter-azure-edition"
+    ImageVersion     = "latest"
+    OSDiskSizeGB     = 128
+    OSDiskSku        = "Premium_LRS"
+    SubnetName       = $WebSubnet
+    NSGName          = $NSGName
 }
 
-# ============================
-# Session Host VM Variables
-# ============================
-$SHVMName     = "vm-avdlab-sh01"
-$SHVMSize     = "Standard_D2alds_v7"
-$SHCompName   = "AVDSH01"
-$SHOSDisk     = "osdisk-avdlab-sh01"
-$SHOSDiskType = "Premium_LRS"
-$SHImgPub     = "MicrosoftWindowsServer"
-$SHImgOffer   = "WindowsServer"
-$SHImgSku     = "2022-datacenter-azure-edition"
-$SHImgVer     = "latest"
-$SHBootDiag   = $true
-$SHSubnet     = $SessionHostSubnet   # ✅ references the defined subnet variable
-$SHNICName    = "nic-avdlab-sh01"
-$SHvCPU       = 2
-$SHMemGB      = 4
+$SessionHost = @{
+    VMName           = "vm-avdlab-sh01"
+    ComputerName     = "AVDSH01"
+    NICName          = "nic-avdlab-sh01"
+    PrivateIPAddress = "10.20.3.4"
+    VMSize           = "Standard_D2als_v7"
+    ImagePublisher   = "MicrosoftWindowsDesktop"
+    ImageOffer       = "Windows-11"
+    ImageSku         = "win11-24h2-avd"
+    ImageVersion     = "latest"
+    OSDiskSizeGB     = 128
+    OSDiskSku        = "Premium_LRS"
+    SubnetName       = $SessionHostSubnet
+    NSGName          = $NSGName
+}
+
+# ============================================================
+# Select Deployment Type
+# ============================================================
+
+if (-not $DeploymentType) {
+    $DeploymentType = "DomainController"
+}
+
+switch ($DeploymentType) {
+    "DomainController" { $VM = $DomainController }
+    "WebVM"            { $VM = $WebVM }
+    "SessionHost"      { $VM = $SessionHost }
+    default { throw "Unknown DeploymentType '$DeploymentType'." }
+}
+
+# ============================================================
+# Generic Deployment Variables
+# ============================================================
+
+$VMName           = $VM.VMName
+$ComputerName     = $VM.ComputerName
+$NICName          = $VM.NICName
+$PrivateIPAddress = $VM.PrivateIPAddress
+$SubnetName       = $VM.SubnetName
+$NSGName          = $VM.NSGName
+$VMSize           = $VM.VMSize
+$ImagePublisher   = $VM.ImagePublisher
+$ImageOffer       = $VM.ImageOffer
+$ImageSku         = $VM.ImageSku
+$ImageVersion     = $VM.ImageVersion
+$OSDiskSizeGB     = $VM.OSDiskSizeGB
+$OSDiskSku        = $VM.OSDiskSku
+
+# ============================================================
+# Validation
+# ============================================================
+
+if ([string]::IsNullOrWhiteSpace($VMName))           { throw "VMName was not initialized." }
+if ([string]::IsNullOrWhiteSpace($NICName))          { throw "NICName was not initialized." }
+if ([string]::IsNullOrWhiteSpace($SubnetName))       { throw "SubnetName was not initialized." }
+if ([string]::IsNullOrWhiteSpace($NSGName))          { throw "NSGName was not initialized." }
