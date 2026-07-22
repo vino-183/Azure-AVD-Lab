@@ -1,0 +1,63 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+
+  "parameters": {
+
+    "location": {
+      "value": "eastus"
+    },
+
+    "vmName": {
+      "value": "vm-avdlab-sh01"
+    },
+
+    "computerName": {
+      "value": "AVDSH01"
+    },
+
+    "vmSize": {
+      "value": "Standard_D2alds_v7"
+    },
+
+    "imagePublisher": {
+      "value": "MicrosoftWindowsDesktop"
+    },
+
+    "imageOffer": {
+      "value": "office-365"
+    },
+
+    "imageSku": {
+      "value": "win11-24h2-avd-m365"
+    },
+
+    "imageVersion": {
+      "value": "latest"
+    },
+
+    "nicName": {
+      "value": "nic-avdlab-sh01"
+    },
+
+    "subnetId": {
+      "value": ""
+    },
+
+    "hostPoolName": {
+      "value": "hp-avdlab-pooled-001"
+    },
+
+    "registrationToken": {
+      "value": ""
+    },
+
+    "adminUsername": {
+      "value": "adminuser"
+    },
+
+    "adminPassword": {
+      "value": ""
+    }
+  }
+}

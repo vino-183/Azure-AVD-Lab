@@ -1,0 +1,154 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+
+  "parameters": {
+
+    "location": {
+      "type": "string"
+    },
+
+    "vmName": {
+      "type": "string"
+    },
+
+    "computerName": {
+      "type": "string"
+    },
+
+    "vmSize": {
+      "type": "string"
+    },
+
+    "imagePublisher": {
+      "type": "string"
+    },
+
+    "imageOffer": {
+      "type": "string"
+    },
+
+    "imageSku": {
+      "type": "string"
+    },
+
+    "imageVersion": {
+      "type": "string",
+      "defaultValue": "latest"
+    },
+
+    "nicId": {
+      "type": "string"
+    },
+
+    "adminUsername": {
+      "type": "string"
+    },
+
+    "adminPassword": {
+      "type": "secureString"
+    },
+
+    "osDiskType": {
+      "type": "string",
+      "defaultValue": "Premium_LRS"
+    },
+
+    "osDiskSizeGB": {
+      "type": "int",
+      "defaultValue": 128
+    },
+
+    "enableTrustedLaunch": {
+      "type": "bool",
+      "defaultValue": true
+    },
+
+    "enableBootDiagnostics": {
+      "type": "bool",
+      "defaultValue": true
+    }
+  },
+
+  "variables": {},
+
+  "resources": [
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2024-11-01",
+      "name": "[parameters('vmName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [],
+
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('vmSize')]"
+        },
+
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "[parameters('imagePublisher')]",
+            "offer": "[parameters('imageOffer')]",
+            "sku": "[parameters('imageSku')]",
+            "version": "[parameters('imageVersion')]"
+          },
+
+          "osDisk": {
+            "createOption": "FromImage",
+            "caching": "ReadWrite",
+            "managedDisk": {
+              "storageAccountType": "[parameters('osDiskType')]"
+            },
+            "diskSizeGB": "[parameters('osDiskSizeGB')]"
+          }
+        },
+
+        "osProfile": {
+          "computerName": "[parameters('computerName')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]",
+          "windowsConfiguration": {
+            "provisionVMAgent": true,
+            "enableAutomaticUpdates": true
+          }
+        },
+
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[parameters('nicId')]"
+            }
+          ]
+        },
+
+        "securityProfile": {
+          "securityType": "[if(parameters('enableTrustedLaunch'),'TrustedLaunch','Standard')]",
+          "uefiSettings": {
+            "secureBootEnabled": "[parameters('enableTrustedLaunch')]",
+            "vTpmEnabled": "[parameters('enableTrustedLaunch')]"
+          }
+        }
+      }
+    }
+  ],
+
+"outputs": {
+
+    "vmName": {
+
+        "type": "string",
+
+        "value": "[parameters('vmName')]"
+
+    },
+
+    "vmId": {
+
+        "type": "string",
+
+        "value": "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
+
+    }
+
+}
+}

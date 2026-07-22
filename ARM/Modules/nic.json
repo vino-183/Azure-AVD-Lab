@@ -1,0 +1,96 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+
+  "contentVersion": "1.0.0.0",
+
+  "parameters": {
+
+    "location": {
+    "type": "string"
+},
+
+"nicName": {
+    "type": "string"
+},
+
+"subnetId": {
+    "type": "string"
+},
+
+"privateIpAllocation": {
+    "type": "string",
+    "defaultValue": "Dynamic"
+},
+
+"privateIpAddress": {
+    "type": "string",
+    "defaultValue": ""
+},
+
+"enableAcceleratedNetworking": {
+    "type": "bool",
+    "defaultValue": false
+},
+
+"networkSecurityGroupId": {
+    "type": "string",
+    "defaultValue": ""
+}
+  },
+
+  "variables": {
+
+  },
+
+  "resources": [
+
+{
+    "type": "Microsoft.Network/networkInterfaces",
+    "apiVersion": "2025-07-01",
+    "name": "[parameters('nicName')]",
+    "location": "[parameters('location')]",
+    "properties": {
+
+        "ipConfigurations": [
+
+    {
+
+        "name": "ipconfig1",
+
+        "properties": {
+
+            "privateIPAllocationMethod":
+                "[parameters('privateIpAllocation')]",
+
+            "subnet": {
+
+                "id":
+                    "[parameters('subnetId')]"
+
+            }
+
+        }
+
+    }
+
+]
+
+    }
+}
+
+  ],
+
+"outputs": {
+
+    "nicId": {
+
+        "type": "string",
+
+        "value":
+        "[resourceId('Microsoft.Network/networkInterfaces', parameters('nicName'))]"
+
+    }
+
+}
+
+}
