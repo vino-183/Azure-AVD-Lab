@@ -1,0 +1,307 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+
+  "parameters": {
+    "location": {
+      "type": "string"
+    },
+
+    "tags": {
+      "type": "object",
+      "defaultValue": {}
+    },
+
+    "deployDomainJoin": {
+      "type": "bool",
+      "defaultValue": false
+    },
+
+    "deployAvdAgent": {
+      "type": "bool",
+      "defaultValue": false
+    },
+
+    "deployDiagnostics": {
+      "type": "bool",
+      "defaultValue": false
+    },
+
+    "nicName": {
+      "type": "string"
+    },
+
+    "subnetId": {
+      "type": "string"
+    },
+
+    "networkSecurityGroupId": {
+      "type": "string",
+      "defaultValue": ""
+    },
+
+    "privateIpAllocation": {
+      "type": "string",
+      "defaultValue": "Dynamic",
+      "allowedValues": [
+        "Dynamic",
+        "Static"
+      ]
+    },
+
+    "privateIpAddress": {
+      "type": "string",
+      "defaultValue": ""
+    },
+
+    "enableAcceleratedNetworking": {
+      "type": "bool",
+      "defaultValue": false
+    },
+
+    "vmName": {
+      "type": "string"
+    },
+
+    "computerName": {
+      "type": "string"
+    },
+
+    "vmSize": {
+      "type": "string"
+    },
+
+    "adminUsername": {
+      "type": "string"
+    },
+
+    "adminPassword": {
+      "type": "secureString"
+    },
+
+    "imagePublisher": {
+      "type": "string"
+    },
+
+    "imageOffer": {
+      "type": "string"
+    },
+
+    "imageSku": {
+      "type": "string"
+    },
+
+    "imageVersion": {
+      "type": "string",
+      "defaultValue": "latest"
+    },
+
+    "osDiskType": {
+      "type": "string",
+      "defaultValue": "Premium_LRS",
+      "allowedValues": [
+        "Standard_LRS",
+        "StandardSSD_LRS",
+        "Premium_LRS"
+      ]
+    },
+
+    "osDiskSizeGB": {
+      "type": "int",
+      "defaultValue": 128
+    },
+
+    "enableTrustedLaunch": {
+      "type": "bool",
+      "defaultValue": false
+    },
+
+    "enableBootDiagnostics": {
+      "type": "bool",
+      "defaultValue": true
+    }
+  },
+
+  "variables": {
+    "templateVersion": "1.1.0"
+  },
+
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "DeployNIC",
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "relativePath": "Modules/nic.json"
+        },
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "nicName": {
+            "value": "[parameters('nicName')]"
+          },
+          "subnetId": {
+            "value": "[parameters('subnetId')]"
+          },
+          "networkSecurityGroupId": {
+            "value": "[parameters('networkSecurityGroupId')]"
+          },
+          "privateIpAllocation": {
+            "value": "[parameters('privateIpAllocation')]"
+          },
+          "privateIpAddress": {
+            "value": "[parameters('privateIpAddress')]"
+          },
+          "enableAcceleratedNetworking": {
+            "value": "[parameters('enableAcceleratedNetworking')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        }
+      }
+    },
+
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "DeployVM",
+      "dependsOn": [
+        "DeployNIC"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "relativePath": "Modules/vm.json"
+        },
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "vmName": {
+            "value": "[parameters('vmName')]"
+          },
+          "computerName": {
+            "value": "[parameters('computerName')]"
+          },
+          "vmSize": {
+            "value": "[parameters('vmSize')]"
+          },
+          "adminUsername": {
+            "value": "[parameters('adminUsername')]"
+          },
+          "adminPassword": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "imagePublisher": {
+            "value": "[parameters('imagePublisher')]"
+          },
+          "imageOffer": {
+            "value": "[parameters('imageOffer')]"
+          },
+          "imageSku": {
+            "value": "[parameters('imageSku')]"
+          },
+          "imageVersion": {
+            "value": "[parameters('imageVersion')]"
+          },
+          "osDiskType": {
+            "value": "[parameters('osDiskType')]"
+          },
+          "osDiskSizeGB": {
+            "value": "[parameters('osDiskSizeGB')]"
+          },
+          "enableTrustedLaunch": {
+            "value": "[parameters('enableTrustedLaunch')]"
+          },
+          "enableBootDiagnostics": {
+            "value": "[parameters('enableBootDiagnostics')]"
+          },
+          "nicId": {
+            "value": "[reference('DeployNIC').outputs.nicId.value]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        }
+      }
+    },
+
+    {
+      "condition": "[parameters('deployDomainJoin')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "DeployDomainJoin",
+      "dependsOn": [
+        "DeployVM"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "relativePath": "Modules/extension-domainjoin.json"
+        },
+        "parameters": {
+          "vmName": {
+            "value": "[parameters('vmName')]"
+          }
+        }
+      }
+    },
+
+    {
+      "condition": "[parameters('deployAvdAgent')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "DeployAVDAgent",
+      "dependsOn": [
+        "DeployDomainJoin"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "relativePath": "Modules/extension-avd.json"
+        },
+        "parameters": {
+          "vmName": {
+            "value": "[parameters('vmName')]"
+          }
+        }
+      }
+    }
+  ],
+
+  "outputs": {
+    "vmId": {
+      "type": "string",
+      "value": "[reference('DeployVM').outputs.vmId.value]"
+    },
+
+    "nicId": {
+      "type": "string",
+      "value": "[reference('DeployNIC').outputs.nicId.value]"
+    },
+
+    "vmName": {
+      "type": "string",
+      "value": "[parameters('vmName')]"
+    },
+
+    "computerName": {
+      "type": "string",
+      "value": "[parameters('computerName')]"
+    },
+
+    "nicName": {
+      "type": "string",
+      "value": "[parameters('nicName')]"
+    },
+
+    "templateVersion": {
+      "type": "string",
+      "value": "[variables('templateVersion')]"
+    }
+  }
+}

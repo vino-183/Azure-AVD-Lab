@@ -1,96 +1,79 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-
   "contentVersion": "1.0.0.0",
 
   "parameters": {
-
     "location": {
-    "type": "string"
-},
-
-"nicName": {
-    "type": "string"
-},
-
-"subnetId": {
-    "type": "string"
-},
-
-"privateIpAllocation": {
-    "type": "string",
-    "defaultValue": "Dynamic"
-},
-
-"privateIpAddress": {
-    "type": "string",
-    "defaultValue": ""
-},
-
-"enableAcceleratedNetworking": {
-    "type": "bool",
-    "defaultValue": false
-},
-
-"networkSecurityGroupId": {
-    "type": "string",
-    "defaultValue": ""
-}
+      "type": "string"
+    },
+    "nicName": {
+      "type": "string"
+    },
+    "subnetId": {
+      "type": "string"
+    },
+    "privateIpAllocation": {
+      "type": "string",
+      "defaultValue": "Dynamic",
+      "allowedValues": [
+        "Dynamic",
+        "Static"
+      ]
+    },
+    "privateIpAddress": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "enableAcceleratedNetworking": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "networkSecurityGroupId": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {}
+    }
   },
 
-  "variables": {
-
-  },
+  "variables": {},
 
   "resources": [
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2025-07-01",
+      "name": "[parameters('nicName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "enableAcceleratedNetworking": "[parameters('enableAcceleratedNetworking')]",
 
-{
-    "type": "Microsoft.Network/networkInterfaces",
-    "apiVersion": "2025-07-01",
-    "name": "[parameters('nicName')]",
-    "location": "[parameters('location')]",
-    "properties": {
+        "networkSecurityGroup": "[if(not(empty(parameters('networkSecurityGroupId'))), createObject('id', parameters('networkSecurityGroupId')), json('null'))]",
 
         "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "[parameters('privateIpAllocation')]",
 
-    {
+              "privateIPAddress": "[if(equals(parameters('privateIpAllocation'), 'Static'), parameters('privateIpAddress'), json('null'))]",
 
-        "name": "ipconfig1",
-
-        "properties": {
-
-            "privateIPAllocationMethod":
-                "[parameters('privateIpAllocation')]",
-
-            "subnet": {
-
-                "id":
-                    "[parameters('subnetId')]"
-
+              "subnet": {
+                "id": "[parameters('subnetId')]"
+              }
             }
-
-        }
-
+          }
+        ]
+      }
     }
-
-]
-
-    }
-}
-
   ],
 
-"outputs": {
-
+  "outputs": {
     "nicId": {
-
-        "type": "string",
-
-        "value":
-        "[resourceId('Microsoft.Network/networkInterfaces', parameters('nicName'))]"
-
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/networkInterfaces', parameters('nicName'))]"
     }
-
-}
-
+  }
 }

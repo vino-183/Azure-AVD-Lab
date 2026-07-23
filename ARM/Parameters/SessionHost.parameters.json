@@ -1,0 +1,95 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+
+  "parameters": {
+    "location": {
+      "value": "eastus"
+    },
+
+    "tags": {
+      "value": {
+        "Environment": "Lab",
+        "Application": "AVD",
+        "Owner": "CloudTeam",
+        "ManagedBy": "ARM"
+      }
+    },
+
+    "nicName": {
+      "value": "avd-sh-01-nic"
+    },
+
+    "subnetId": {
+      "value": "/subscriptions/<subscription-id>/resourceGroups/rg-network/providers/Microsoft.Network/virtualNetworks/vnet-avd/subnets/default"
+    },
+
+    "networkSecurityGroupId": {
+      "value": "/subscriptions/<subscription-id>/resourceGroups/rg-network/providers/Microsoft.Network/networkSecurityGroups/nsg-avd"
+    },
+
+    "privateIpAllocation": {
+      "value": "Dynamic"
+    },
+
+    "privateIpAddress": {
+      "value": ""
+    },
+
+    "enableAcceleratedNetworking": {
+      "value": true
+    },
+
+    "vmName": {
+      "value": "vm-avdlab-sh01"
+    },
+
+    "computerName": {
+      "value": "AVDSH01"
+    },
+
+    "vmSize": {
+      "value": "Standard_D2alds_v7"
+    },
+
+    "adminUsername": {
+      "value": "azureadmin"
+    },
+
+    "adminPassword": {
+      "value": "ReplaceMe"
+    },
+
+    "imagePublisher": {
+      "value": "MicrosoftWindowsDesktop"
+    },
+
+    "imageOffer": {
+      "value": "windows-11"
+    },
+
+    "imageSku": {
+      "value": "win11-23h2-avd"
+    },
+
+    "imageVersion": {
+      "value": "latest"
+    },
+
+    "osDiskType": {
+      "value": "Premium_LRS"
+    },
+
+    "osDiskSizeGB": {
+      "value": 128
+    },
+
+    "enableTrustedLaunch": {
+      "value": true
+    },
+
+    "enableBootDiagnostics": {
+      "value": true
+    }
+  }
+}
